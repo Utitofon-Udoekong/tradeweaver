@@ -1,0 +1,22 @@
+{
+  "canisters": {
+    "tradeweaver_backend": {
+      "main": "src/tradeweaver_backend/main.mo",
+      "type": "motoko"
+    },
+    "tradeweaver_frontend": {
+      "dependencies": ["tradeweaver_backend"],
+      "source": ["src/tradeweaver_frontend/out"],
+      "type": "assets",
+      "workspace": "tradeweaver_frontend"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}

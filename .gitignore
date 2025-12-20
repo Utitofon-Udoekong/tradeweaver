@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.npm
+
+# dfx generated files
+.dfx/
+canister_ids.json
+
+# Build outputs
+dist/
+out/
+.next/
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Motoko build artifacts
+.vessel/
