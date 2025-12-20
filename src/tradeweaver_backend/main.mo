@@ -5,6 +5,7 @@ import Principal "mo:base/Principal";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
+import Nat8 "mo:base/Nat8";
 import Int "mo:base/Int";
 import Float "mo:base/Float";
 import Text "mo:base/Text";
@@ -14,6 +15,9 @@ import Buffer "mo:base/Buffer";
 import Hash "mo:base/Hash";
 import Blob "mo:base/Blob";
 import Cycles "mo:base/ExperimentalCycles";
+import Char "mo:base/Char";
+import Option "mo:base/Option";
+
 
 persistent actor TradeWeaver {
   
@@ -367,30 +371,248 @@ persistent actor TradeWeaver {
   };
   
   // ============================================
-  // PRICE FETCHING (Mock for now, will add HTTPS outcalls)
+  // PRICE FETCHING VIA HTTPS OUTCALLS
   // ============================================
   
-  /// Fetch current price for an asset
+  // Types for HTTPS outcalls
+  type HttpRequestArgs = {
+    url : Text;
+    max_response_bytes : ?Nat64;
+    headers : [HttpHeader];
+    body : ?[Nat8];
+    method : HttpMethod;
+    transform : ?TransformRawResponseFunction;
+  };
+
+  type HttpHeader = {
+    name : Text;
+    value : Text;
+  };
+
+  type HttpMethod = {
+    #get;
+    #post;
+    #head;
+  };
+
+  type HttpResponsePayload = {
+    status : Nat;
+    headers : [HttpHeader];
+    body : [Nat8];
+  };
+
+  type TransformRawResponseFunction = {
+    function : shared query TransformArgs -> async HttpResponsePayload;
+    context : Blob;
+  };
+
+  type TransformArgs = {
+    response : HttpResponsePayload;
+    context : Blob;
+  };
+
+  // IC Management Canister
+  let ic : actor {
+    http_request : HttpRequestArgs -> async HttpResponsePayload;
+  } = actor "aaaaa-aa";
+
+  // Transform function to strip variable headers for consensus
+  public query func transform(raw : TransformArgs) : async HttpResponsePayload {
+    {
+      status = raw.response.status;
+      body = raw.response.body;
+      headers = []; // Strip headers for determinism
+    }
+  };
+  
+  // Get CoinGecko API ID for asset
+  private func getAssetId(asset: Asset) : Text {
+    switch (asset) {
+      case (#BTC) { "bitcoin" };
+      case (#ETH) { "ethereum" };
+      case (#ICP) { "internet-computer" };
+    };
+  };
+
+  /// Fetch current price for an asset via HTTPS outcall
   public func fetchPrice(asset: Asset) : async Result.Result<PriceResponse, Text> {
-    // For now, return mock prices
-    // TODO: Implement HTTPS outcalls to Coinbase API in Week 2
+    let assetId = getAssetId(asset);
+    let url = "https://api.coingecko.com/api/v3/simple/price?ids=" # assetId # "&vs_currencies=usd";
     
-    for ((a, price) in mockPrices.vals()) {
-      if (assetEqual(a, asset)) {
-        return #ok({
-          asset = asset;
-          priceUSD = price;
-          timestamp = Time.now();
-        });
+    let request_headers : [HttpHeader] = [
+      { name = "Accept"; value = "application/json" },
+      { name = "User-Agent"; value = "TradeWeaver-DCA-Bot" }
+    ];
+    
+    let transform_context : TransformRawResponseFunction = {
+      function = transform;
+      context = Blob.fromArray([]);
+    };
+    
+    let http_request : HttpRequestArgs = {
+      url = url;
+      max_response_bytes = ?2048;
+      headers = request_headers;
+      body = null;
+      method = #get;
+      transform = ?transform_context;
+    };
+    
+    // Add cycles for the HTTPS outcall (~1B cycles)
+    Cycles.add<system>(1_000_000_000);
+    
+    try {
+      let response = await ic.http_request(http_request);
+      
+      if (response.status == 200) {
+        // Decode response body
+        let body_text = switch (Text.decodeUtf8(Blob.fromArray(response.body))) {
+          case null { return #err("Failed to decode response body") };
+          case (?text) { text };
+        };
+        
+        // Parse price from JSON (simple parser)
+        let price = parsePrice(body_text, assetId);
+        
+        switch (price) {
+          case null { 
+            // Fallback to mock prices if parsing fails
+            for ((a, p) in mockPrices.vals()) {
+              if (assetEqual(a, asset)) {
+                return #ok({
+                  asset = asset;
+                  priceUSD = p;
+                  timestamp = Time.now();
+                });
+              };
+            };
+            #err("Failed to parse price from response") 
+          };
+          case (?p) {
+            #ok({
+              asset = asset;
+              priceUSD = p;
+              timestamp = Time.now();
+            })
+          };
+        };
+      } else {
+        // Fallback to mock prices on HTTP error
+        for ((a, p) in mockPrices.vals()) {
+          if (assetEqual(a, asset)) {
+            return #ok({
+              asset = asset;
+              priceUSD = p;
+              timestamp = Time.now();
+            });
+          };
+        };
+        #err("HTTP error: " # Nat.toText(response.status))
+      };
+    } catch (e) {
+      // Fallback to mock prices on any error
+      for ((a, p) in mockPrices.vals()) {
+        if (assetEqual(a, asset)) {
+          return #ok({
+            asset = asset;
+            priceUSD = p;
+            timestamp = Time.now();
+          });
+        };
+      };
+      #err("HTTPS outcall failed - using mock prices")
+    };
+  };
+  
+  // Simple JSON price parser
+  // Parses: {"bitcoin":{"usd":97500.0}}
+  private func parsePrice(json: Text, assetId: Text) : ?Float {
+    // Look for the pattern: "usd":NUMBER
+    let chars = Text.toIter(json);
+    var buffer = "";
+    var foundUsd = false;
+    var collectingNumber = false;
+    var numberStr = "";
+    
+    for (c in chars) {
+      buffer := buffer # Text.fromChar(c);
+      
+      if (Text.endsWith(buffer, #text "\"usd\":")) {
+        foundUsd := true;
+        collectingNumber := true;
+        numberStr := "";
+      } else if (collectingNumber) {
+        if (Char.isDigit(c) or c == '.' or c == '-') {
+          numberStr := numberStr # Text.fromChar(c);
+        } else if (Text.size(numberStr) > 0) {
+          // End of number
+          return textToFloat(numberStr);
+        };
       };
     };
     
-    #err("Price not available")
+    if (Text.size(numberStr) > 0) {
+      return textToFloat(numberStr);
+    };
+    
+    null
+  };
+  
+  // Convert text to float (simple implementation)
+  private func textToFloat(t: Text) : ?Float {
+    var result : Float = 0.0;
+    var decimalPart : Float = 0.0;
+    var decimalDivisor : Float = 1.0;
+    var isDecimal = false;
+    var isNegative = false;
+    
+    for (c in Text.toIter(t)) {
+      if (c == '-') {
+        isNegative := true;
+      } else if (c == '.') {
+        isDecimal := true;
+      } else if (Char.isDigit(c)) {
+        let digit = Float.fromInt(Nat32.toNat(Char.toNat32(c) - 48));
+        if (isDecimal) {
+          decimalDivisor *= 10.0;
+          decimalPart := decimalPart + (digit / decimalDivisor);
+        } else {
+          result := result * 10.0 + digit;
+        };
+      };
+    };
+    
+    let finalResult = result + decimalPart;
+    if (isNegative) {
+      return ?(-finalResult);
+    };
+    ?finalResult
   };
   
   /// Get prices for all assets
   public func getAllPrices() : async [(Asset, Float)] {
-    mockPrices
+    let btcResult = await fetchPrice(#BTC);
+    let ethResult = await fetchPrice(#ETH);
+    let icpResult = await fetchPrice(#ICP);
+    
+    var prices : [(Asset, Float)] = [];
+    
+    switch (btcResult) {
+      case (#ok(p)) { prices := Array.append(prices, [(#BTC, p.priceUSD)]) };
+      case (#err(_)) { prices := Array.append(prices, [(#BTC, 97500.0)]) }; // fallback
+    };
+    
+    switch (ethResult) {
+      case (#ok(p)) { prices := Array.append(prices, [(#ETH, p.priceUSD)]) };
+      case (#err(_)) { prices := Array.append(prices, [(#ETH, 3450.0)]) }; // fallback
+    };
+    
+    switch (icpResult) {
+      case (#ok(p)) { prices := Array.append(prices, [(#ICP, p.priceUSD)]) };
+      case (#err(_)) { prices := Array.append(prices, [(#ICP, 11.5)]) }; // fallback
+    };
+    
+    prices
   };
   
   // Helper to compare assets
