@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2, Zap, Send, Bot, User, TrendingUp, Wallet, Bitcoin, Brain, Shield, Link2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { getAssetSymbol, formatUSD, formatCrypto, type AssetType, type FrequencyType, type TriggerConditionType } from "@/lib/types";
+import { getAssetSymbol, formatUSD, formatCrypto, getFrequencyLabel, type AssetType, type FrequencyType, type TriggerConditionType } from "@/lib/types";
 import ReactMarkdown from "react-markdown";
 
 interface Message {
@@ -32,15 +32,15 @@ export default function Dashboard() {
 
   // Available slash commands
   const commands = [
-    { cmd: '/buy', desc: 'Create a buy strategy', example: '/buy $50 BTC daily' },
-    { cmd: '/run', desc: 'Run a strategy', example: '/run 1' },
-    { cmd: '/pause', desc: 'Pause a strategy', example: '/pause 1' },
-    { cmd: '/resume', desc: 'Resume a strategy', example: '/resume 1' },
-    { cmd: '/delete', desc: 'Delete a strategy', example: '/delete 1' },
-    { cmd: '/strategies', desc: 'List your strategies', example: '/strategies' },
-    { cmd: '/portfolio', desc: 'View your portfolio', example: '/portfolio' },
-    { cmd: '/prices', desc: 'Check current prices', example: '/prices' },
-    { cmd: '/help', desc: 'Show all commands', example: '/help' },
+    { cmd: '/buy', desc: 'Create DCA buy strategy (BTC/ETH/ICP)', example: '/buy $50 BTC daily' },
+    { cmd: '/run', desc: 'Execute a strategy now', example: '/run 1' },
+    { cmd: '/pause', desc: 'Pause automatic execution', example: '/pause 1' },
+    { cmd: '/resume', desc: 'Resume paused strategy', example: '/resume 1' },
+    { cmd: '/delete', desc: 'Remove a strategy', example: '/delete 1' },
+    { cmd: '/strategies', desc: 'List all strategies', example: '/strategies' },
+    { cmd: '/portfolio', desc: 'View holdings & P/L', example: '/portfolio' },
+    { cmd: '/prices', desc: 'Live BTC/ETH/ICP prices', example: '/prices' },
+    { cmd: '/help', desc: 'Full command reference', example: '/help' },
   ];
 
   // Filter commands based on input
@@ -79,7 +79,19 @@ export default function Dashboard() {
       setMessages([{
         id: 1,
         role: 'agent',
-        content: "Welcome to TradeWeaver 🤖\n\nI'm your AI trading agent. Type **/** to see all commands:\n\n• `/buy $50 BTC daily` - Create a buy strategy\n• `/run 1` - Run strategy #1\n• `/pause 1` - Pause a strategy\n• `/strategies` - View your strategies\n• `/help` - See all commands",
+        content: `**Welcome to TradeWeaver** 🤖
+
+I'm your AI-powered **DCA (Dollar-Cost Averaging) bot**. I help you automate recurring crypto purchases.
+
+**Quick Start:**
+\`/buy $50 BTC daily\` - Buy $50 of Bitcoin every day
+\`/buy $100 ETH weekly\` - Buy $100 of Ethereum weekly
+\`/buy $25 ICP every 30 seconds\` - High-frequency test
+
+**Supported Assets:** BTC, ETH, ICP
+**Features:** Custom intervals, price conditions, AI optimization
+
+Type \`/help\` for full documentation or just describe what you want!`,
         timestamp: new Date(),
       }]);
     }
@@ -384,12 +396,12 @@ export default function Dashboard() {
         } else {
           // Multiple strategies, ask which one
           const strategyList = strategies.map((s, i) =>
-            `${i + 1}. ${getAssetSymbol(s.targetAsset)} - $${Number(s.amount) / 100} ${s.active ? '' : '(paused)'}`
+            `**${i + 1}.** ${getAssetSymbol(s.targetAsset)} $${Number(s.amount) / 100} ${getFrequencyLabel(s.frequency)} ${s.active ? '' : '(paused)'}`
           ).join('\n');
           const agentMessage: Message = {
             id: Date.now() + 1,
             role: 'agent',
-            content: `You have ${strategies.length} strategies. Which one?\n\n${strategyList}\n\nSay "run 1" or "run 2" etc.`,
+            content: `You have ${strategies.length} strategies. Which one?\n\n${strategyList}\n\nType \`/run 1\` or \`/run 2\` to execute.`,
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, agentMessage]);
@@ -425,21 +437,75 @@ export default function Dashboard() {
           setMessages(prev => [...prev, agentMessage]);
         } else {
           const strategyList = strategies.map((s, i) =>
-            `${i + 1}. ${getAssetSymbol(s.targetAsset)} - $${Number(s.amount) / 100} • ${s.active ? 'Active' : 'Paused'}`
+            `**${i + 1}. ${getAssetSymbol(s.targetAsset)}** - $${Number(s.amount) / 100} ${getFrequencyLabel(s.frequency)} ${s.active ? '✅ Active' : '⏸️ Paused'}`
           ).join('\n');
           const agentMessage: Message = {
             id: Date.now() + 1,
             role: 'agent',
-            content: `**Your Strategies**\n\n${strategyList}\n\n**Commands:**\n• "run 1" - Execute strategy #1\n• "pause 1" - Pause strategy #1\n• "resume 1" - Resume a paused strategy`,
+            content: `**Your DCA Strategies**\n\n${strategyList}\n\n---\n**Commands:**\n• \`/run 1\` - Execute now\n• \`/pause 1\` - Stop auto-execution\n• \`/resume 1\` - Resume\n• \`/delete 1\` - Remove`,
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, agentMessage]);
         }
       } else if (processedInput.toLowerCase().includes('help')) {
+        const helpText = `**TradeWeaver - DCA Trading Bot**
+
+**What is this?**
+TradeWeaver is a Dollar-Cost Averaging (DCA) bot. It automates recurring purchases of crypto assets at specified intervals.
+
+---
+
+**CREATING STRATEGIES**
+
+\`/buy <amount> <asset> <frequency> [condition]\`
+
+**Assets:** BTC, ETH, ICP
+**Amounts:** $10, $50, $100, etc.
+**Frequencies:**
+• \`daily\` - Once per day
+• \`weekly\` - Once per week  
+• \`hourly\` - Once per hour
+• \`every 30 seconds\` - Custom interval
+• \`every 5 minutes\` - Custom interval
+• \`every 2 hours\` - Custom interval
+
+**Conditions (optional):**
+• \`if under $10\` - Only buy if price below $10
+• \`if above $100\` - Only buy if price above $100
+
+**Examples:**
+• \`/buy $50 BTC daily\`
+• \`/buy $100 ETH weekly\`
+• \`/buy $25 ICP every 10 seconds\`
+• \`/buy $50 BTC daily if under $100000\`
+
+---
+
+**MANAGING STRATEGIES**
+
+• \`/run 1\` - Execute strategy #1 now
+• \`/pause 1\` - Stop auto-execution
+• \`/resume 1\` - Resume auto-execution
+• \`/delete 1\` - Remove strategy
+
+---
+
+**VIEWING DATA**
+
+• \`/strategies\` - List all strategies
+• \`/portfolio\` - Holdings & profit/loss
+• \`/prices\` - Live prices
+
+---
+
+**Notes:**
+• AI adjusts buy amounts ±25% based on market trends
+• Purchases are simulated in demo mode`;
+
         const agentMessage: Message = {
           id: Date.now() + 1,
           role: 'agent',
-          content: "**TradeWeaver Commands**\n\n**Create:**\n• \"Buy $50 of BTC daily\"\n• \"Buy $100 ETH every 2 hours\"\n• \"Buy $25 ICP if under $10\"\n\n**Run:**\n• \"run 1\" - Run strategy #1\n• \"run 2\" - Run strategy #2\n\n**Manage:**\n• \"pause 1\" - Pause strategy #1\n• \"resume 1\" - Resume strategy #1\n\n**View:**\n• \"my strategies\"\n• \"portfolio\"\n• \"prices\"",
+          content: helpText,
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, agentMessage]);
