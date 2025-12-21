@@ -40,6 +40,7 @@ export const idlFactory = ({ IDL }) => {
     'amount' : IDL.Nat,
   });
   const Result_1 = IDL.Variant({ 'ok' : DCAStrategy, 'err' : IDL.Text });
+  const Result_6 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const PriceResponse = IDL.Record({
     'asset' : Asset,
     'timestamp' : Time,
@@ -107,6 +108,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
+    'deleteStrategy' : IDL.Func([IDL.Nat], [Result_6], []),
     'fetchPrice' : IDL.Func([Asset], [Result_5], []),
     'getAIRecommendation' : IDL.Func([Asset, IDL.Nat], [AIRecommendation], []),
     'getAccount' : IDL.Func([], [Result_4], []),

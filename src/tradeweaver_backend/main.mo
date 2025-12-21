@@ -12,11 +12,9 @@ import Text "mo:base/Text";
 import Result "mo:base/Result";
 import Iter "mo:base/Iter";
 import Buffer "mo:base/Buffer";
-import Hash "mo:base/Hash";
 import Blob "mo:base/Blob";
 import Cycles "mo:base/ExperimentalCycles";
 import Char "mo:base/Char";
-import Option "mo:base/Option";
 
 persistent actor TradeWeaver {
 
@@ -135,11 +133,11 @@ persistent actor TradeWeaver {
   // ============================================
 
   // Stable storage for upgrade persistence
-  stable var usersEntries : [(Principal, UserAccount)] = [];
-  stable var strategiesEntries : [(Nat, DCAStrategy)] = [];
-  stable var purchasesEntries : [(Nat, [Purchase])] = [];
-  stable var nextStrategyId : Nat = 0;
-  stable var nextPurchaseId : Nat = 0;
+  var usersEntries : [(Principal, UserAccount)] = [];
+  var strategiesEntries : [(Nat, DCAStrategy)] = [];
+  var purchasesEntries : [(Nat, [Purchase])] = [];
+  var nextStrategyId : Nat = 0;
+  var nextPurchaseId : Nat = 0;
 
   // Hash function for Nat keys
   private func natHash(n : Nat) : Nat32 {
@@ -159,9 +157,9 @@ persistent actor TradeWeaver {
   ];
 
   // Price history for AI trend analysis (keeps last 24 entries per asset)
-  stable var priceHistoryBTC : [PriceHistoryEntry] = [];
-  stable var priceHistoryETH : [PriceHistoryEntry] = [];
-  stable var priceHistoryICP : [PriceHistoryEntry] = [];
+  var priceHistoryBTC : [PriceHistoryEntry] = [];
+  var priceHistoryETH : [PriceHistoryEntry] = [];
+  var priceHistoryICP : [PriceHistoryEntry] = [];
 
   // Last AI recommendation cache
   transient var lastAIRecommendation : ?AIRecommendation = null;
@@ -199,7 +197,7 @@ persistent actor TradeWeaver {
     };
 
     switch (users.get(caller)) {
-      case (?existing) { #err("Account already exists") };
+      case (?_existing) { #err("Account already exists") };
       case null {
         let account : UserAccount = {
           principal = caller;
@@ -334,6 +332,26 @@ persistent actor TradeWeaver {
         };
         strategies.put(strategyId, updated);
         #ok(updated);
+      };
+    };
+  };
+
+  /// Delete a DCA strategy
+  public shared (msg) func deleteStrategy(strategyId : Nat) : async Result.Result<(), Text> {
+    let caller = msg.caller;
+
+    switch (strategies.get(strategyId)) {
+      case null { #err("Strategy not found") };
+      case (?strategy) {
+        if (strategy.owner != caller) {
+          return #err("Not authorized");
+        };
+
+        // Remove the strategy
+        strategies.delete(strategyId);
+        // Also remove associated purchases
+        purchases.delete(strategyId);
+        #ok(());
       };
     };
   };
@@ -669,7 +687,7 @@ persistent actor TradeWeaver {
         };
         #err("HTTP error: " # Nat.toText(response.status));
       };
-    } catch (e) {
+    } catch (_e) {
       // Fallback to mock prices on any error
       for ((a, p) in mockPrices.vals()) {
         if (assetEqual(a, asset)) {
@@ -686,7 +704,7 @@ persistent actor TradeWeaver {
 
   // Simple JSON price parser
   // Parses: {"bitcoin":{"usd":97500.0}}
-  private func parsePrice(json : Text, assetId : Text) : ?Float {
+  private func parsePrice(json : Text, _assetId : Text) : ?Float {
     // Look for the pattern: "usd":NUMBER
     let chars = Text.toIter(json);
     var buffer = "";
@@ -878,7 +896,7 @@ persistent actor TradeWeaver {
     // 2. Get price history and calculate trend
     let history = getPriceHistory(asset);
     let trend = calculateTrend(history);
-    let sma = calculateSMA(history);
+    let _sma = calculateSMA(history);
 
     // 3. AI decision logic based on trend analysis
     let (action, confidence, multiplier, reasoning) : (AIAction, Float, Float, Text) = if (history.size() < 3) {
@@ -965,7 +983,7 @@ persistent actor TradeWeaver {
   };
 
   // Bitcoin Management Canister Interface
-  let bitcoinCanister : actor {
+  let _bitcoinCanister : actor {
     bitcoin_get_utxos : ({
       address : Text;
       network : BitcoinNetwork;
@@ -1030,7 +1048,7 @@ persistent actor TradeWeaver {
   };
 
   /// Purchase BTC using threshold Schnorr signatures (Chain Fusion)
-  private func purchaseBTC(strategy : DCAStrategy, price : Float, amountAsset : Float) : async Result.Result<Text, Text> {
+  private func purchaseBTC(strategy : DCAStrategy, _price : Float, _amountAsset : Float) : async Result.Result<Text, Text> {
     // In production, this would:
     // 1. Get user's Bitcoin address from Schnorr public key
     // 2. Check available UTXO balance
@@ -1042,7 +1060,7 @@ persistent actor TradeWeaver {
     try {
       // Get Schnorr public key for the user
       Cycles.add<system>(100_000_000);
-      let pubKeyResult = await signatureCanister.schnorr_public_key({
+      let _pubKeyResult = await signatureCanister.schnorr_public_key({
         canister_id = null;
         derivation_path = getDerivationPath(strategy.owner);
         key_id = getSchnorrKeyId();
@@ -1062,14 +1080,14 @@ persistent actor TradeWeaver {
       let txHash = "btc_schnorr_" # Int.toText(Time.now()) # "_" # Nat.toText(signResult.signature.size());
 
       #ok(txHash);
-    } catch (e) {
+    } catch (_e) {
       // Fallback to mock hash if threshold signature fails (local development)
       #ok("btc_mock_" # Int.toText(Time.now()));
     };
   };
 
   /// Purchase ETH using threshold ECDSA signatures (Chain Fusion)
-  private func purchaseETH(strategy : DCAStrategy, price : Float, amountAsset : Float) : async Result.Result<Text, Text> {
+  private func purchaseETH(strategy : DCAStrategy, _price : Float, _amountAsset : Float) : async Result.Result<Text, Text> {
     // In production, this would:
     // 1. Get user's Ethereum address from ECDSA public key
     // 2. Check ETH balance
@@ -1080,7 +1098,7 @@ persistent actor TradeWeaver {
     try {
       // Get ECDSA public key for the user
       Cycles.add<system>(100_000_000);
-      let pubKeyResult = await signatureCanister.ecdsa_public_key({
+      let _pubKeyResult = await signatureCanister.ecdsa_public_key({
         canister_id = null;
         derivation_path = getDerivationPath(strategy.owner);
         key_id = getECDSAKeyId();
@@ -1133,14 +1151,14 @@ persistent actor TradeWeaver {
       let txHash = "eth_ecdsa_" # Int.toText(Time.now()) # "_" # Nat.toText(signResult.signature.size());
 
       #ok(txHash);
-    } catch (e) {
+    } catch (_e) {
       // Fallback to mock hash if threshold signature fails (local development)
       #ok("eth_mock_" # Int.toText(Time.now()));
     };
   };
 
   /// Purchase ICP (native, no cross-chain needed)
-  private func purchaseICP(strategy : DCAStrategy, price : Float, amountAsset : Float) : async Result.Result<Text, Text> {
+  private func purchaseICP(strategy : DCAStrategy, _price : Float, _amountAsset : Float) : async Result.Result<Text, Text> {
     // ICP is native - would integrate with ICP Ledger for actual transfers
     // For DCA bot, this simulates swapping stablecoins for ICP
     let txHash = "icp_native_" # Int.toText(Time.now());
@@ -1215,7 +1233,7 @@ persistent actor TradeWeaver {
   public shared (msg) func getBitcoinAddress() : async Result.Result<Text, Text> {
     try {
       Cycles.add<system>(100_000_000);
-      let pubKeyResult = await signatureCanister.schnorr_public_key({
+      let _pubKeyResult = await signatureCanister.schnorr_public_key({
         canister_id = null;
         derivation_path = getDerivationPath(msg.caller);
         key_id = getSchnorrKeyId();
@@ -1225,7 +1243,7 @@ persistent actor TradeWeaver {
       // For now, return hex-encoded public key prefix as mock address
       let pubKeyHex = "bc1p" # Int.toText(Time.now() % 100000);
       #ok(pubKeyHex);
-    } catch (e) {
+    } catch (_e) {
       #err("Failed to derive Bitcoin address");
     };
   };
@@ -1234,7 +1252,7 @@ persistent actor TradeWeaver {
   public shared (msg) func getEthereumAddress() : async Result.Result<Text, Text> {
     try {
       Cycles.add<system>(100_000_000);
-      let pubKeyResult = await signatureCanister.ecdsa_public_key({
+      let _pubKeyResult = await signatureCanister.ecdsa_public_key({
         canister_id = null;
         derivation_path = getDerivationPath(msg.caller);
         key_id = getECDSAKeyId();
@@ -1244,7 +1262,7 @@ persistent actor TradeWeaver {
       // For now, return mock address
       let ethAddress = "0x" # Int.toText(Time.now() % 1000000000000);
       #ok(ethAddress);
-    } catch (e) {
+    } catch (_e) {
       #err("Failed to derive Ethereum address");
     };
   };
@@ -1372,7 +1390,7 @@ persistent actor TradeWeaver {
 
   /// Calculate profit/loss
   public shared (msg) func getProfitLoss() : async ProfitLoss {
-    let caller = msg.caller;
+    let _caller = msg.caller;
     let portfolio = await getPortfolio();
     let prices = await getAllPrices();
 

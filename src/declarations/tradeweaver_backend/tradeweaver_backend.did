@@ -18,6 +18,11 @@ type TransformArgs =
    response: HttpResponsePayload;
  };
 type Time = int;
+type Result_6 = 
+ variant {
+   err: text;
+   ok;
+ };
 type Result_5 = 
  variant {
    err: text;
@@ -148,6 +153,8 @@ service : {
   /// Create a new DCA strategy with flexible timing and optional conditions
   createStrategy: (targetAsset: Asset, amount: nat, frequency: Frequency,
    condition: opt TriggerCondition) -> (Result_1);
+  /// Delete a DCA strategy
+  deleteStrategy: (strategyId: nat) -> (Result_6);
   /// Fetch current price for an asset via HTTPS outcall
   fetchPrice: (asset: Asset) -> (Result_5);
   /// AI-powered purchase recommendation

@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { Loader2, Zap, Send, Bot, User, TrendingUp, Wallet, Bitcoin, Brain, Shield, Link2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { getAssetSymbol, formatUSD, formatCrypto, type AssetType, type FrequencyType, type TriggerConditionType } from "@/lib/types";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   id: number;
@@ -35,6 +36,7 @@ export default function Dashboard() {
     { cmd: '/run', desc: 'Run a strategy', example: '/run 1' },
     { cmd: '/pause', desc: 'Pause a strategy', example: '/pause 1' },
     { cmd: '/resume', desc: 'Resume a strategy', example: '/resume 1' },
+    { cmd: '/delete', desc: 'Delete a strategy', example: '/delete 1' },
     { cmd: '/strategies', desc: 'List your strategies', example: '/strategies' },
     { cmd: '/portfolio', desc: 'View your portfolio', example: '/portfolio' },
     { cmd: '/prices', desc: 'Check current prices', example: '/prices' },
@@ -174,6 +176,8 @@ export default function Dashboard() {
       processedInput = 'pause ' + rawInput.replace('/pause ', '');
     } else if (rawInput.startsWith('/resume ')) {
       processedInput = 'resume ' + rawInput.replace('/resume ', '');
+    } else if (rawInput.startsWith('/delete ')) {
+      processedInput = 'delete ' + rawInput.replace('/delete ', '');
     } else if (rawInput === '/strategies' || rawInput.startsWith('/strategies ')) {
       processedInput = 'show my strategies';
     } else if (rawInput === '/portfolio' || rawInput.startsWith('/portfolio ')) {
@@ -321,6 +325,33 @@ export default function Dashboard() {
             id: Date.now() + 1,
             role: 'agent',
             content: `Strategy #${strategyNum} not found. Say "show my strategies" to see your strategies.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        }
+      } else if (processedInput.toLowerCase().match(/delete\s*(\d+)/i)) {
+        // Delete specific strategy
+        const match = processedInput.match(/(\d+)/);
+        const strategyNum = match ? parseInt(match[1]) : 0;
+
+        if (strategyNum > 0 && strategyNum <= strategies.length) {
+          const strategy = strategies[strategyNum - 1];
+          await actor.deleteStrategy(strategy.id);
+          queryClient.invalidateQueries({ queryKey: ['strategies'] });
+          queryClient.invalidateQueries({ queryKey: ['purchases'] });
+
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `🗑️ Deleted strategy #${strategyNum}\n\n**${getAssetSymbol(strategy.targetAsset)}** - $${Number(strategy.amount) / 100} has been removed.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else {
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `Strategy #${strategyNum} not found. Say "/strategies" to see your strategies.`,
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, agentMessage]);
@@ -585,7 +616,19 @@ export default function Dashboard() {
               ? 'bg-emerald-500/20 text-white'
               : 'bg-slate-800/50 text-slate-200'
               }`}>
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              <div className="prose prose-sm prose-invert max-w-none">
+                <ReactMarkdown
+                  components={{
+                    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
+                    ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                    li: ({ children }) => <li className="text-slate-300">{children}</li>,
+                    code: ({ children }) => <code className="bg-slate-700 px-1 rounded text-emerald-400 font-mono text-sm">{children}</code>,
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </div>
               <p className="text-xs text-slate-500 mt-1">
                 {format(msg.timestamp, 'HH:mm')}
               </p>

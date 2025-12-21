@@ -85,6 +85,8 @@ export type Result_4 = { 'ok' : UserAccount } |
   { 'err' : string };
 export type Result_5 = { 'ok' : PriceResponse } |
   { 'err' : string };
+export type Result_6 = { 'ok' : null } |
+  { 'err' : string };
 export type Time = bigint;
 export interface TransformArgs {
   'context' : Uint8Array | number[],
@@ -116,6 +118,10 @@ export interface _SERVICE {
     [Asset, bigint, Frequency, [] | [TriggerCondition]],
     Result_1
   >,
+  /**
+   * / Delete a DCA strategy
+   */
+  'deleteStrategy' : ActorMethod<[bigint], Result_6>,
   /**
    * / Fetch current price for an asset via HTTPS outcall
    */
