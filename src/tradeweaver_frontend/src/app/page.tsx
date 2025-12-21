@@ -24,7 +24,27 @@ export default function Dashboard() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showCommands, setShowCommands] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Available slash commands
+  const commands = [
+    { cmd: '/buy', desc: 'Create a buy strategy', example: '/buy $50 BTC daily' },
+    { cmd: '/run', desc: 'Run a strategy', example: '/run 1' },
+    { cmd: '/pause', desc: 'Pause a strategy', example: '/pause 1' },
+    { cmd: '/resume', desc: 'Resume a strategy', example: '/resume 1' },
+    { cmd: '/strategies', desc: 'List your strategies', example: '/strategies' },
+    { cmd: '/portfolio', desc: 'View your portfolio', example: '/portfolio' },
+    { cmd: '/prices', desc: 'Check current prices', example: '/prices' },
+    { cmd: '/help', desc: 'Show all commands', example: '/help' },
+  ];
+
+  // Filter commands based on input
+  const filteredCommands = input.startsWith('/')
+    ? commands.filter(c => c.cmd.toLowerCase().startsWith(input.toLowerCase().split(' ')[0]))
+    : [];
 
   // Fetch strategies and prices
   const { data: strategies = [] } = useQuery({
@@ -57,7 +77,7 @@ export default function Dashboard() {
       setMessages([{
         id: 1,
         role: 'agent',
-        content: "Hey! I'm TradeWeaver, your AI trading agent. 🤖\n\nTell me what to buy in plain English:\n\n**Custom Timing:**\n• \"Buy $50 of BTC every 30 minutes\"\n• \"Invest $100 in ETH every 2 hours\"\n• \"Get $25 ICP every 10 seconds\" (for testing)\n\n**Conditional Triggers:**\n• \"Buy $100 ETH when price drops 5%\"\n• \"Invest $50 BTC if under $95000\"\n\n**Simple:**\n• \"Buy $50 BTC daily\"\n• \"$100 ETH weekly\"\n\nI'll analyze market conditions and optimize your purchases automatically. What would you like to set up?",
+        content: "Welcome to TradeWeaver 🤖\n\nI'm your AI trading agent. Type **/** to see all commands:\n\n• `/buy $50 BTC daily` - Create a buy strategy\n• `/run 1` - Run strategy #1\n• `/pause 1` - Pause a strategy\n• `/strategies` - View your strategies\n• `/help` - See all commands",
         timestamp: new Date(),
       }]);
     }
@@ -140,11 +160,32 @@ export default function Dashboard() {
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, userMessage]);
+    const rawInput = input;
     setInput('');
     setIsProcessing(true);
 
+    // Preprocess slash commands
+    let processedInput = rawInput;
+    if (rawInput.startsWith('/buy ')) {
+      processedInput = rawInput.replace('/buy ', 'Buy ');
+    } else if (rawInput.startsWith('/run ')) {
+      processedInput = 'run ' + rawInput.replace('/run ', '');
+    } else if (rawInput.startsWith('/pause ')) {
+      processedInput = 'pause ' + rawInput.replace('/pause ', '');
+    } else if (rawInput.startsWith('/resume ')) {
+      processedInput = 'resume ' + rawInput.replace('/resume ', '');
+    } else if (rawInput === '/strategies' || rawInput.startsWith('/strategies ')) {
+      processedInput = 'show my strategies';
+    } else if (rawInput === '/portfolio' || rawInput.startsWith('/portfolio ')) {
+      processedInput = 'show my portfolio';
+    } else if (rawInput === '/prices' || rawInput.startsWith('/prices ')) {
+      processedInput = 'show prices';
+    } else if (rawInput === '/help' || rawInput.startsWith('/help ')) {
+      processedInput = 'help';
+    }
+
     try {
-      const parsed = parseCommand(input);
+      const parsed = parseCommand(processedInput);
 
       if (parsed && parsed.asset && parsed.amount && parsed.frequency) {
         // Create strategy with flexible timing
@@ -204,18 +245,21 @@ export default function Dashboard() {
           };
           setMessages(prev => [...prev, agentMessage]);
         }
-      } else if (input.toLowerCase().includes('execute') || input.toLowerCase().includes('buy now') || input.toLowerCase().includes('run')) {
-        // Execute latest strategy
-        if (strategies.length > 0) {
-          const latestStrategy = strategies[strategies.length - 1];
-          await actor.triggerExecution(latestStrategy.id);
+      } else if (processedInput.toLowerCase().match(/run\s*(strategy)?\s*(\d+)/i) || processedInput.toLowerCase().match(/execute\s*(strategy)?\s*(\d+)/i)) {
+        // Run specific strategy by number
+        const match = processedInput.match(/(\d+)/);
+        const strategyNum = match ? parseInt(match[1]) : 0;
+
+        if (strategyNum > 0 && strategyNum <= strategies.length) {
+          const strategy = strategies[strategyNum - 1];
+          await actor.triggerExecution(strategy.id);
           queryClient.invalidateQueries({ queryKey: ['purchases'] });
           queryClient.invalidateQueries({ queryKey: ['strategies'] });
 
           const agentMessage: Message = {
             id: Date.now() + 1,
             role: 'agent',
-            content: `Executed! 🚀\n\nI analyzed the current market and made your purchase. Check the activity below for details.\n\nThe AI adjusted the amount based on whether the price was above or below the moving average.`,
+            content: `✅ Ran strategy #${strategyNum}\n\n**${getAssetSymbol(strategy.targetAsset)}** - $${Number(strategy.amount) / 100} purchase executed.\n\nThe AI analyzed market conditions and adjusted the amount based on the moving average.`,
             timestamp: new Date(),
             action: { type: 'purchase_executed' }
           };
@@ -224,12 +268,102 @@ export default function Dashboard() {
           const agentMessage: Message = {
             id: Date.now() + 1,
             role: 'agent',
-            content: "You don't have any strategies yet. Tell me what to buy first, like \"Buy $50 of BTC weekly\".",
+            content: `Strategy #${strategyNum} not found. You have ${strategies.length} strategies. Say "show my strategies" to see them.`,
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, agentMessage]);
         }
-      } else if (input.toLowerCase().includes('price')) {
+      } else if (processedInput.toLowerCase().match(/pause\s*(strategy)?\s*(\d+)/i)) {
+        // Pause specific strategy
+        const match = processedInput.match(/(\d+)/);
+        const strategyNum = match ? parseInt(match[1]) : 0;
+
+        if (strategyNum > 0 && strategyNum <= strategies.length) {
+          const strategy = strategies[strategyNum - 1];
+          await actor.pauseStrategy(strategy.id);
+          queryClient.invalidateQueries({ queryKey: ['strategies'] });
+
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `⏸️ Paused strategy #${strategyNum}\n\n**${getAssetSymbol(strategy.targetAsset)}** - $${Number(strategy.amount) / 100}\n\nSay "resume ${strategyNum}" to reactivate it.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else {
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `Strategy #${strategyNum} not found. Say "show my strategies" to see your strategies.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        }
+      } else if (processedInput.toLowerCase().match(/resume\s*(strategy)?\s*(\d+)/i)) {
+        // Resume specific strategy
+        const match = processedInput.match(/(\d+)/);
+        const strategyNum = match ? parseInt(match[1]) : 0;
+
+        if (strategyNum > 0 && strategyNum <= strategies.length) {
+          const strategy = strategies[strategyNum - 1];
+          await actor.resumeStrategy(strategy.id);
+          queryClient.invalidateQueries({ queryKey: ['strategies'] });
+
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `▶️ Resumed strategy #${strategyNum}\n\n**${getAssetSymbol(strategy.targetAsset)}** - $${Number(strategy.amount) / 100} is now active again.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else {
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `Strategy #${strategyNum} not found. Say "show my strategies" to see your strategies.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        }
+      } else if (processedInput.toLowerCase().includes('execute') || processedInput.toLowerCase().includes('run') || processedInput.toLowerCase().includes('buy now')) {
+        // Execute without number - prompt for which one
+        if (strategies.length === 0) {
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: "You don't have any strategies yet.\n\nCreate one first: \"Buy $50 of BTC daily\"",
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else if (strategies.length === 1) {
+          // Only one strategy, run it
+          const strategy = strategies[0];
+          await actor.triggerExecution(strategy.id);
+          queryClient.invalidateQueries({ queryKey: ['purchases'] });
+          queryClient.invalidateQueries({ queryKey: ['strategies'] });
+
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `✅ Ran your strategy\n\n**${getAssetSymbol(strategy.targetAsset)}** - $${Number(strategy.amount) / 100} purchase executed.`,
+            timestamp: new Date(),
+            action: { type: 'purchase_executed' }
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else {
+          // Multiple strategies, ask which one
+          const strategyList = strategies.map((s, i) =>
+            `${i + 1}. ${getAssetSymbol(s.targetAsset)} - $${Number(s.amount) / 100} ${s.active ? '' : '(paused)'}`
+          ).join('\n');
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `You have ${strategies.length} strategies. Which one?\n\n${strategyList}\n\nSay "run 1" or "run 2" etc.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        }
+      } else if (processedInput.toLowerCase().includes('price')) {
         // Show prices
         const priceText = prices.map(([asset, price]) => `${getAssetSymbol(asset)}: $${price.toLocaleString()}`).join('\n');
         const agentMessage: Message = {
@@ -239,7 +373,7 @@ export default function Dashboard() {
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, agentMessage]);
-      } else if (input.toLowerCase().includes('portfolio') || input.toLowerCase().includes('status') || input.toLowerCase().includes('holdings')) {
+      } else if (processedInput.toLowerCase().includes('portfolio') || processedInput.toLowerCase().includes('status') || processedInput.toLowerCase().includes('holdings')) {
         const profitLoss = await actor.getProfitLoss();
         const agentMessage: Message = {
           id: Date.now() + 1,
@@ -248,7 +382,7 @@ export default function Dashboard() {
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, agentMessage]);
-      } else if (input.toLowerCase().includes('strategies') || input.toLowerCase().includes('my strategy')) {
+      } else if (processedInput.toLowerCase().includes('strategies') || processedInput.toLowerCase().includes('my strategy')) {
         // Show strategies
         if (strategies.length === 0) {
           const agentMessage: Message = {
@@ -265,16 +399,16 @@ export default function Dashboard() {
           const agentMessage: Message = {
             id: Date.now() + 1,
             role: 'agent',
-            content: `**Your Strategies**\n\n${strategyList}\n\nSay "run strategy 1" to execute a specific strategy.`,
+            content: `**Your Strategies**\n\n${strategyList}\n\n**Commands:**\n• "run 1" - Execute strategy #1\n• "pause 1" - Pause strategy #1\n• "resume 1" - Resume a paused strategy`,
             timestamp: new Date(),
           };
           setMessages(prev => [...prev, agentMessage]);
         }
-      } else if (input.toLowerCase().includes('help')) {
+      } else if (processedInput.toLowerCase().includes('help')) {
         const agentMessage: Message = {
           id: Date.now() + 1,
           role: 'agent',
-          content: "**How to use TradeWeaver**\n\n**Create a strategy:**\n• \"Buy $50 of BTC daily\"\n• \"Invest $100 in ETH every 2 hours\"\n• \"Buy $25 ICP weekly if under $10\"\n\n**Run a strategy:**\n• \"Run strategy 1\" or \"Execute\"\n\n**Check status:**\n• \"Show my strategies\"\n• \"Show my portfolio\"\n• \"Show prices\"",
+          content: "**TradeWeaver Commands**\n\n**Create:**\n• \"Buy $50 of BTC daily\"\n• \"Buy $100 ETH every 2 hours\"\n• \"Buy $25 ICP if under $10\"\n\n**Run:**\n• \"run 1\" - Run strategy #1\n• \"run 2\" - Run strategy #2\n\n**Manage:**\n• \"pause 1\" - Pause strategy #1\n• \"resume 1\" - Resume strategy #1\n\n**View:**\n• \"my strategies\"\n• \"portfolio\"\n• \"prices\"",
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, agentMessage]);
@@ -464,6 +598,7 @@ export default function Dashboard() {
           </div>
         ))}
 
+
         {isProcessing && (
           <div className="flex gap-3">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
@@ -496,54 +631,76 @@ export default function Dashboard() {
 
       {/* Input */}
       <div className="border-t border-slate-800 p-4">
-        <div className="max-w-3xl mx-auto flex gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Tell me what to buy... e.g. 'Buy $50 of BTC weekly'"
-            className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50"
-          />
-          <button
-            onClick={handleSend}
-            disabled={isProcessing || !input.trim()}
-            className="px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-medium hover:opacity-90 transition disabled:opacity-50"
-          >
-            <Send size={20} />
-          </button>
-        </div>
+        <div className="max-w-3xl mx-auto relative">
+          {/* Command dropdown */}
+          {input.startsWith('/') && filteredCommands.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+              {filteredCommands.map((cmd, i) => (
+                <button
+                  key={cmd.cmd}
+                  onClick={() => {
+                    setInput(cmd.cmd + ' ');
+                    inputRef.current?.focus();
+                  }}
+                  className={`w-full px-4 py-3 text-left flex items-center justify-between hover:bg-slate-700/50 transition ${i === selectedCommand ? 'bg-slate-700/50' : ''
+                    }`}
+                >
+                  <div>
+                    <span className="text-emerald-400 font-mono">{cmd.cmd}</span>
+                    <span className="text-slate-400 ml-3">{cmd.desc}</span>
+                  </div>
+                  <span className="text-slate-500 text-xs">{cmd.example}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
-        {/* Quick actions */}
-        <div className="max-w-3xl mx-auto flex gap-2 mt-3 flex-wrap justify-center">
-          <button
-            onClick={() => { setInput('show my strategies'); }}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:border-slate-600 transition"
-          >
-            My Strategies
-          </button>
-          <button
-            onClick={() => { setInput('show my portfolio'); }}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:border-slate-600 transition"
-          >
-            Portfolio
-          </button>
-          <button
-            onClick={() => { setInput('show prices'); }}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:border-slate-600 transition"
-          >
-            Prices
-          </button>
-          <button
-            onClick={() => { setInput('help'); }}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:border-slate-600 transition"
-          >
-            Help
-          </button>
+          <div className="flex gap-3">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setShowCommands(e.target.value.startsWith('/'));
+                setSelectedCommand(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (input.startsWith('/') && filteredCommands.length > 0 && input.split(' ').length === 1) {
+                    // Complete the command
+                    setInput(filteredCommands[selectedCommand].cmd + ' ');
+                  } else {
+                    handleSend();
+                  }
+                } else if (e.key === 'ArrowDown' && filteredCommands.length > 0) {
+                  e.preventDefault();
+                  setSelectedCommand((prev) => Math.min(prev + 1, filteredCommands.length - 1));
+                } else if (e.key === 'ArrowUp' && filteredCommands.length > 0) {
+                  e.preventDefault();
+                  setSelectedCommand((prev) => Math.max(prev - 1, 0));
+                } else if (e.key === 'Tab' && filteredCommands.length > 0) {
+                  e.preventDefault();
+                  setInput(filteredCommands[selectedCommand].cmd + ' ');
+                } else if (e.key === 'Escape') {
+                  setInput('');
+                }
+              }}
+              placeholder="Type / for commands or describe what you want"
+              className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50"
+            />
+            <button
+              onClick={handleSend}
+              disabled={isProcessing || !input.trim()}
+              className="px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-medium hover:opacity-90 transition disabled:opacity-50"
+            >
+              <Send size={20} />
+            </button>
+          </div>
         </div>
 
         <p className="text-center text-xs text-slate-600 mt-3">
-          Demo mode • Simulated purchases
+          Type <span className="text-slate-400">/</span> for commands • Demo mode
         </p>
       </div>
     </div>
