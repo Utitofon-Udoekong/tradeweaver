@@ -4,6 +4,14 @@ type UserAccount =
    createdAt: Time;
    "principal": principal;
  };
+type TriggerCondition = 
+ variant {
+   None;
+   PriceAbove: float64;
+   PriceBelow: float64;
+   PriceBelowAverage: float64;
+   PriceDropPercent: float64;
+ };
 type TransformArgs = 
  record {
    context: blob;
@@ -64,6 +72,12 @@ type PriceResponse =
    priceUSD: float64;
    timestamp: Time;
  };
+type PriceHistoryEntry = 
+ record {
+   asset: Asset;
+   price: float64;
+   timestamp: Time;
+ };
 type HttpResponsePayload = 
  record {
    body: vec nat8;
@@ -84,9 +98,11 @@ type Holding =
  };
 type Frequency = 
  variant {
-   Biweekly;
    Daily;
+   Hours: nat;
+   Minutes: nat;
    Monthly;
+   Seconds: nat;
    Weekly;
  };
 type DCAStrategy = 
@@ -94,11 +110,14 @@ type DCAStrategy =
    active: bool;
    amount: nat;
    createdAt: Time;
+   executionCount: nat;
    frequency: Frequency;
    id: nat;
+   intervalSeconds: nat;
    nextExecution: Time;
    owner: principal;
    targetAsset: Asset;
+   triggerCondition: TriggerCondition;
  };
 type Asset = 
  variant {
@@ -106,16 +125,34 @@ type Asset =
    ETH;
    ICP;
  };
+type AIRecommendation = 
+ record {
+   action: AIAction;
+   adjustedAmount: nat;
+   confidence: float64;
+   reasoning: text;
+   timestamp: Time;
+ };
+type AIAction = 
+ variant {
+   BuyLess;
+   BuyMore;
+   BuyNow;
+   Wait;
+ };
 service : {
   /// Check and execute all due strategies (called by timer or manually)
   checkAndExecuteStrategies: () -> (nat);
   /// Create a new user account
   createAccount: () -> (Result_4);
-  /// Create a new DCA strategy
-  createStrategy: (targetAsset: Asset, amount: nat, frequency: Frequency) ->
-   (Result_1);
+  /// Create a new DCA strategy with flexible timing and optional conditions
+  createStrategy: (targetAsset: Asset, amount: nat, frequency: Frequency,
+   condition: opt TriggerCondition) -> (Result_1);
   /// Fetch current price for an asset via HTTPS outcall
   fetchPrice: (asset: Asset) -> (Result_5);
+  /// AI-powered purchase recommendation
+  /// Analyzes price trends and market conditions to optimize DCA execution
+  getAIRecommendation: (asset: Asset, baseAmount: nat) -> (AIRecommendation);
   /// Get user account info
   getAccount: () -> (Result_4);
   /// Get prices for all assets
@@ -129,8 +166,12 @@ service : {
   getBitcoinAddress: () -> (Result_3);
   /// Get user's Ethereum address (derived from ECDSA public key)
   getEthereumAddress: () -> (Result_3);
+  /// Get the last AI recommendation (cached)
+  getLastAIRecommendation: () -> (opt AIRecommendation) query;
   /// Get portfolio holdings
   getPortfolio: () -> (vec Holding);
+  /// Get price history for analysis
+  getPriceHistoryForAsset: (asset: Asset) -> (vec PriceHistoryEntry) query;
   /// Calculate profit/loss
   getProfitLoss: () -> (ProfitLoss);
   /// Get purchase history for a specific strategy

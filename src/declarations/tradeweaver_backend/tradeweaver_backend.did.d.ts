@@ -2,23 +2,39 @@ import type { Principal } from '@dfinity/principal';
 import type { ActorMethod } from '@dfinity/agent';
 import type { IDL } from '@dfinity/candid';
 
+export type AIAction = { 'BuyNow' : null } |
+  { 'Wait' : null } |
+  { 'BuyLess' : null } |
+  { 'BuyMore' : null };
+export interface AIRecommendation {
+  'action' : AIAction,
+  'reasoning' : string,
+  'timestamp' : Time,
+  'confidence' : number,
+  'adjustedAmount' : bigint,
+}
 export type Asset = { 'BTC' : null } |
   { 'ETH' : null } |
   { 'ICP' : null };
 export interface DCAStrategy {
   'id' : bigint,
+  'triggerCondition' : TriggerCondition,
+  'executionCount' : bigint,
   'active' : boolean,
   'owner' : Principal,
   'createdAt' : Time,
+  'intervalSeconds' : bigint,
   'targetAsset' : Asset,
   'frequency' : Frequency,
   'nextExecution' : Time,
   'amount' : bigint,
 }
-export type Frequency = { 'Weekly' : null } |
+export type Frequency = { 'Minutes' : bigint } |
+  { 'Seconds' : bigint } |
+  { 'Weekly' : null } |
   { 'Daily' : null } |
   { 'Monthly' : null } |
-  { 'Biweekly' : null };
+  { 'Hours' : bigint };
 export interface Holding {
   'asset' : Asset,
   'averagePrice' : number,
@@ -30,6 +46,11 @@ export interface HttpResponsePayload {
   'status' : bigint,
   'body' : Uint8Array | number[],
   'headers' : Array<HttpHeader>,
+}
+export interface PriceHistoryEntry {
+  'asset' : Asset,
+  'timestamp' : Time,
+  'price' : number,
 }
 export interface PriceResponse {
   'asset' : Asset,
@@ -69,6 +90,11 @@ export interface TransformArgs {
   'context' : Uint8Array | number[],
   'response' : HttpResponsePayload,
 }
+export type TriggerCondition = { 'None' : null } |
+  { 'PriceBelow' : number } |
+  { 'PriceAbove' : number } |
+  { 'PriceBelowAverage' : number } |
+  { 'PriceDropPercent' : number };
 export interface UserAccount {
   'principal' : Principal,
   'balance' : bigint,
@@ -84,13 +110,21 @@ export interface _SERVICE {
    */
   'createAccount' : ActorMethod<[], Result_4>,
   /**
-   * / Create a new DCA strategy
+   * / Create a new DCA strategy with flexible timing and optional conditions
    */
-  'createStrategy' : ActorMethod<[Asset, bigint, Frequency], Result_1>,
+  'createStrategy' : ActorMethod<
+    [Asset, bigint, Frequency, [] | [TriggerCondition]],
+    Result_1
+  >,
   /**
    * / Fetch current price for an asset via HTTPS outcall
    */
   'fetchPrice' : ActorMethod<[Asset], Result_5>,
+  /**
+   * / AI-powered purchase recommendation
+   * / Analyzes price trends and market conditions to optimize DCA execution
+   */
+  'getAIRecommendation' : ActorMethod<[Asset, bigint], AIRecommendation>,
   /**
    * / Get user account info
    */
@@ -112,9 +146,17 @@ export interface _SERVICE {
    */
   'getEthereumAddress' : ActorMethod<[], Result_3>,
   /**
+   * / Get the last AI recommendation (cached)
+   */
+  'getLastAIRecommendation' : ActorMethod<[], [] | [AIRecommendation]>,
+  /**
    * / Get portfolio holdings
    */
   'getPortfolio' : ActorMethod<[], Array<Holding>>,
+  /**
+   * / Get price history for analysis
+   */
+  'getPriceHistoryForAsset' : ActorMethod<[Asset], Array<PriceHistoryEntry>>,
   /**
    * / Calculate profit/loss
    */

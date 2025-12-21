@@ -1,7 +1,23 @@
 // Types matching the Motoko backend Candid types
 
 export type AssetType = { BTC: null } | { ETH: null } | { ICP: null };
-export type FrequencyType = { Daily: null } | { Weekly: null } | { Biweekly: null } | { Monthly: null };
+
+// Flexible frequency types
+export type FrequencyType = 
+  | { Seconds: bigint }
+  | { Minutes: bigint }
+  | { Hours: bigint }
+  | { Daily: null } 
+  | { Weekly: null } 
+  | { Monthly: null };
+
+// Trigger conditions for conditional execution
+export type TriggerConditionType =
+  | { None: null }
+  | { PriceBelow: number }
+  | { PriceAbove: number }
+  | { PriceDropPercent: number }
+  | { PriceBelowAverage: number };
 
 export interface Strategy {
   id: bigint;
@@ -9,9 +25,12 @@ export interface Strategy {
   targetAsset: AssetType;
   amount: bigint;
   frequency: FrequencyType;
+  triggerCondition: TriggerConditionType;
+  intervalSeconds: bigint;
   nextExecution: bigint;
   active: boolean;
   createdAt: bigint;
+  executionCount: bigint;
 }
 
 export interface Purchase {
@@ -59,10 +78,21 @@ export function getAssetName(asset: AssetType): string {
 }
 
 export function getFrequencyLabel(freq: FrequencyType): string {
+  if ('Seconds' in freq) return `Every ${freq.Seconds}s`;
+  if ('Minutes' in freq) return `Every ${freq.Minutes}m`;
+  if ('Hours' in freq) return `Every ${freq.Hours}h`;
   if ('Daily' in freq) return 'Daily';
   if ('Weekly' in freq) return 'Weekly';
-  if ('Biweekly' in freq) return 'Biweekly';
   return 'Monthly';
+}
+
+export function getTriggerLabel(cond: TriggerConditionType): string {
+  if ('None' in cond) return 'Always';
+  if ('PriceBelow' in cond) return `Price < $${cond.PriceBelow}`;
+  if ('PriceAbove' in cond) return `Price > $${cond.PriceAbove}`;
+  if ('PriceDropPercent' in cond) return `${cond.PriceDropPercent}% dip`;
+  if ('PriceBelowAverage' in cond) return `${cond.PriceBelowAverage}% below avg`;
+  return 'Custom';
 }
 
 export function formatUSD(cents: bigint | number): string {

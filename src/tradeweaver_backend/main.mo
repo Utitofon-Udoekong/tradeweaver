@@ -38,24 +38,38 @@ persistent actor TradeWeaver {
     #ETH;
   };
 
-  // Frequency options for DCA
+  // Flexible frequency - interval in seconds
   public type Frequency = {
-    #Daily;
-    #Weekly; // Every Monday
-    #Biweekly; // Every 2 weeks
-    #Monthly; // 1st of month
+    #Seconds : Nat; // Custom interval in seconds
+    #Minutes : Nat; // Custom interval in minutes
+    #Hours : Nat; // Custom interval in hours
+    #Daily; // Every 24 hours
+    #Weekly; // Every 7 days
+    #Monthly; // Every 30 days
   };
 
-  // DCA strategy configuration
+  // Trigger conditions for conditional execution
+  public type TriggerCondition = {
+    #None; // Execute on schedule
+    #PriceBelow : Float; // Only buy if price < X
+    #PriceAbove : Float; // Only buy if price > X
+    #PriceDropPercent : Float; // Buy when price drops X% from recent high
+    #PriceBelowAverage : Float; // Buy when price is X% below SMA
+  };
+
+  // DCA strategy configuration with flexible timing and conditions
   public type DCAStrategy = {
     id : Nat;
     owner : Principal;
     targetAsset : Asset;
     amount : Nat; // Amount in USD cents (e.g., 10000 = $100)
-    frequency : Frequency;
+    frequency : Frequency; // Flexible interval
+    triggerCondition : TriggerCondition; // Optional price condition
+    intervalSeconds : Nat; // Computed interval in seconds
     nextExecution : Time.Time;
     active : Bool;
     createdAt : Time.Time;
+    executionCount : Nat; // Track how many times executed
   };
 
   // Purchase record
@@ -211,11 +225,12 @@ persistent actor TradeWeaver {
   // STRATEGY MANAGEMENT
   // ============================================
 
-  /// Create a new DCA strategy
+  /// Create a new DCA strategy with flexible timing and optional conditions
   public shared (msg) func createStrategy(
     targetAsset : Asset,
     amount : Nat,
     frequency : Frequency,
+    condition : ?TriggerCondition,
   ) : async Result.Result<DCAStrategy, Text> {
     let caller = msg.caller;
 
@@ -238,15 +253,23 @@ persistent actor TradeWeaver {
       return #err("Minimum amount is $1 (100 cents)");
     };
 
+    let triggerCond = switch (condition) {
+      case null { #None };
+      case (?c) { c };
+    };
+
     let strategy : DCAStrategy = {
       id = nextStrategyId;
       owner = caller;
       targetAsset = targetAsset;
       amount = amount;
       frequency = frequency;
+      triggerCondition = triggerCond;
+      intervalSeconds = frequencyToSeconds(frequency);
       nextExecution = calculateNextExecution(frequency, Time.now());
       active = true;
       createdAt = Time.now();
+      executionCount = 0;
     };
 
     strategies.put(nextStrategyId, strategy);
@@ -272,9 +295,12 @@ persistent actor TradeWeaver {
           targetAsset = strategy.targetAsset;
           amount = strategy.amount;
           frequency = strategy.frequency;
+          triggerCondition = strategy.triggerCondition;
+          intervalSeconds = strategy.intervalSeconds;
           nextExecution = strategy.nextExecution;
           active = false;
           createdAt = strategy.createdAt;
+          executionCount = strategy.executionCount;
         };
         strategies.put(strategyId, updated);
         #ok(updated);
@@ -299,9 +325,12 @@ persistent actor TradeWeaver {
           targetAsset = strategy.targetAsset;
           amount = strategy.amount;
           frequency = strategy.frequency;
+          triggerCondition = strategy.triggerCondition;
+          intervalSeconds = strategy.intervalSeconds;
           nextExecution = calculateNextExecution(strategy.frequency, Time.now());
           active = true;
           createdAt = strategy.createdAt;
+          executionCount = strategy.executionCount;
         };
         strategies.put(strategyId, updated);
         #ok(updated);
@@ -337,14 +366,29 @@ persistent actor TradeWeaver {
 
   /// Calculate next execution time based on frequency
   private func calculateNextExecution(freq : Frequency, from : Time.Time) : Time.Time {
-    let ONE_DAY : Int = 86_400_000_000_000; // nanoseconds in a day
+    let ONE_SECOND : Int = 1_000_000_000; // nanoseconds in a second
+    let ONE_DAY : Int = 86_400 * ONE_SECOND;
     let ONE_WEEK : Int = 7 * ONE_DAY;
 
     switch (freq) {
+      case (#Seconds(s)) { from + (Int.abs(s) * ONE_SECOND) };
+      case (#Minutes(m)) { from + (Int.abs(m) * 60 * ONE_SECOND) };
+      case (#Hours(h)) { from + (Int.abs(h) * 3600 * ONE_SECOND) };
       case (#Daily) { from + ONE_DAY };
       case (#Weekly) { from + ONE_WEEK };
-      case (#Biweekly) { from + (2 * ONE_WEEK) };
-      case (#Monthly) { from + (30 * ONE_DAY) }; // Simplified to 30 days
+      case (#Monthly) { from + (30 * ONE_DAY) };
+    };
+  };
+
+  /// Convert frequency to seconds for storage
+  private func frequencyToSeconds(freq : Frequency) : Nat {
+    switch (freq) {
+      case (#Seconds(s)) { s };
+      case (#Minutes(m)) { m * 60 };
+      case (#Hours(h)) { h * 3600 };
+      case (#Daily) { 86400 };
+      case (#Weekly) { 604800 };
+      case (#Monthly) { 2592000 };
     };
   };
 
@@ -355,33 +399,119 @@ persistent actor TradeWeaver {
 
     for ((id, strategy) in strategies.entries()) {
       if (strategy.active and now >= strategy.nextExecution) {
-        // Execute purchase
-        let result = await executePurchase(strategy);
+        // Check trigger conditions before executing
+        let shouldExecute = await checkTriggerCondition(strategy);
 
-        switch (result) {
-          case (#ok(_)) {
-            // Update next execution time
-            let updated : DCAStrategy = {
-              id = strategy.id;
-              owner = strategy.owner;
-              targetAsset = strategy.targetAsset;
-              amount = strategy.amount;
-              frequency = strategy.frequency;
-              nextExecution = calculateNextExecution(strategy.frequency, now);
-              active = strategy.active;
-              createdAt = strategy.createdAt;
+        if (shouldExecute) {
+          // Execute purchase
+          let result = await executePurchase(strategy);
+
+          switch (result) {
+            case (#ok(_)) {
+              // Update next execution time and increment count
+              let updated : DCAStrategy = {
+                id = strategy.id;
+                owner = strategy.owner;
+                targetAsset = strategy.targetAsset;
+                amount = strategy.amount;
+                frequency = strategy.frequency;
+                triggerCondition = strategy.triggerCondition;
+                intervalSeconds = strategy.intervalSeconds;
+                nextExecution = calculateNextExecution(strategy.frequency, now);
+                active = strategy.active;
+                createdAt = strategy.createdAt;
+                executionCount = strategy.executionCount + 1;
+              };
+              strategies.put(id, updated);
+              executedCount += 1;
             };
-            strategies.put(id, updated);
-            executedCount += 1;
+            case (#err(_)) {
+              // Update next execution even on error to prevent retry spam
+              let updated : DCAStrategy = {
+                id = strategy.id;
+                owner = strategy.owner;
+                targetAsset = strategy.targetAsset;
+                amount = strategy.amount;
+                frequency = strategy.frequency;
+                triggerCondition = strategy.triggerCondition;
+                intervalSeconds = strategy.intervalSeconds;
+                nextExecution = calculateNextExecution(strategy.frequency, now);
+                active = strategy.active;
+                createdAt = strategy.createdAt;
+                executionCount = strategy.executionCount;
+              };
+              strategies.put(id, updated);
+            };
           };
-          case (#err(_)) {
-            // Log error but continue with other strategies
+        } else {
+          // Condition not met, reschedule for next interval
+          let updated : DCAStrategy = {
+            id = strategy.id;
+            owner = strategy.owner;
+            targetAsset = strategy.targetAsset;
+            amount = strategy.amount;
+            frequency = strategy.frequency;
+            triggerCondition = strategy.triggerCondition;
+            intervalSeconds = strategy.intervalSeconds;
+            nextExecution = calculateNextExecution(strategy.frequency, now);
+            active = strategy.active;
+            createdAt = strategy.createdAt;
+            executionCount = strategy.executionCount;
           };
+          strategies.put(id, updated);
         };
       };
     };
 
     executedCount;
+  };
+
+  /// Check if trigger condition is met for a strategy
+  private func checkTriggerCondition(strategy : DCAStrategy) : async Bool {
+    switch (strategy.triggerCondition) {
+      case (#None) { true }; // No condition, always execute
+      case (#PriceBelow(maxPrice)) {
+        let priceResult = await fetchPrice(strategy.targetAsset);
+        switch (priceResult) {
+          case (#ok(p)) { p.priceUSD < maxPrice };
+          case (#err(_)) { false };
+        };
+      };
+      case (#PriceAbove(minPrice)) {
+        let priceResult = await fetchPrice(strategy.targetAsset);
+        switch (priceResult) {
+          case (#ok(p)) { p.priceUSD > minPrice };
+          case (#err(_)) { false };
+        };
+      };
+      case (#PriceDropPercent(dropPercent)) {
+        // Check if price dropped X% from SMA
+        let history = getPriceHistory(strategy.targetAsset);
+        if (history.size() < 3) { return true }; // Not enough data
+
+        let sma = calculateSMA(history);
+        let priceResult = await fetchPrice(strategy.targetAsset);
+        switch (priceResult) {
+          case (#ok(p)) {
+            let dropFromSMA = (sma - p.priceUSD) / sma * 100.0;
+            dropFromSMA >= dropPercent;
+          };
+          case (#err(_)) { false };
+        };
+      };
+      case (#PriceBelowAverage(percentBelow)) {
+        // Only buy if current price is X% below SMA
+        let history = getPriceHistory(strategy.targetAsset);
+        if (history.size() < 3) { return true };
+
+        let sma = calculateSMA(history);
+        let priceResult = await fetchPrice(strategy.targetAsset);
+        switch (priceResult) {
+          case (#ok(p)) { p.priceUSD < sma * (1.0 - percentBelow / 100.0) };
+          case (#err(_)) { false };
+        };
+      };
+    };
   };
 
   /// Manual trigger for testing a specific strategy

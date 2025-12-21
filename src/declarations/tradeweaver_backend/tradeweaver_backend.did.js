@@ -12,16 +12,28 @@ export const idlFactory = ({ IDL }) => {
     'ICP' : IDL.Null,
   });
   const Frequency = IDL.Variant({
+    'Minutes' : IDL.Nat,
+    'Seconds' : IDL.Nat,
     'Weekly' : IDL.Null,
     'Daily' : IDL.Null,
     'Monthly' : IDL.Null,
-    'Biweekly' : IDL.Null,
+    'Hours' : IDL.Nat,
+  });
+  const TriggerCondition = IDL.Variant({
+    'None' : IDL.Null,
+    'PriceBelow' : IDL.Float64,
+    'PriceAbove' : IDL.Float64,
+    'PriceBelowAverage' : IDL.Float64,
+    'PriceDropPercent' : IDL.Float64,
   });
   const DCAStrategy = IDL.Record({
     'id' : IDL.Nat,
+    'triggerCondition' : TriggerCondition,
+    'executionCount' : IDL.Nat,
     'active' : IDL.Bool,
     'owner' : IDL.Principal,
     'createdAt' : Time,
+    'intervalSeconds' : IDL.Nat,
     'targetAsset' : Asset,
     'frequency' : Frequency,
     'nextExecution' : Time,
@@ -34,6 +46,19 @@ export const idlFactory = ({ IDL }) => {
     'priceUSD' : IDL.Float64,
   });
   const Result_5 = IDL.Variant({ 'ok' : PriceResponse, 'err' : IDL.Text });
+  const AIAction = IDL.Variant({
+    'BuyNow' : IDL.Null,
+    'Wait' : IDL.Null,
+    'BuyLess' : IDL.Null,
+    'BuyMore' : IDL.Null,
+  });
+  const AIRecommendation = IDL.Record({
+    'action' : AIAction,
+    'reasoning' : IDL.Text,
+    'timestamp' : Time,
+    'confidence' : IDL.Float64,
+    'adjustedAmount' : IDL.Nat,
+  });
   const Purchase = IDL.Record({
     'id' : IDL.Nat,
     'asset' : Asset,
@@ -50,6 +75,11 @@ export const idlFactory = ({ IDL }) => {
     'averagePrice' : IDL.Float64,
     'costBasis' : IDL.Float64,
     'amount' : IDL.Float64,
+  });
+  const PriceHistoryEntry = IDL.Record({
+    'asset' : Asset,
+    'timestamp' : Time,
+    'price' : IDL.Float64,
   });
   const ProfitLoss = IDL.Record({
     'totalValue' : IDL.Float64,
@@ -72,14 +102,29 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     'checkAndExecuteStrategies' : IDL.Func([], [IDL.Nat], []),
     'createAccount' : IDL.Func([], [Result_4], []),
-    'createStrategy' : IDL.Func([Asset, IDL.Nat, Frequency], [Result_1], []),
+    'createStrategy' : IDL.Func(
+        [Asset, IDL.Nat, Frequency, IDL.Opt(TriggerCondition)],
+        [Result_1],
+        [],
+      ),
     'fetchPrice' : IDL.Func([Asset], [Result_5], []),
+    'getAIRecommendation' : IDL.Func([Asset, IDL.Nat], [AIRecommendation], []),
     'getAccount' : IDL.Func([], [Result_4], []),
     'getAllPrices' : IDL.Func([], [IDL.Vec(IDL.Tuple(Asset, IDL.Float64))], []),
     'getAllPurchases' : IDL.Func([], [IDL.Vec(Purchase)], []),
     'getBitcoinAddress' : IDL.Func([], [Result_3], []),
     'getEthereumAddress' : IDL.Func([], [Result_3], []),
+    'getLastAIRecommendation' : IDL.Func(
+        [],
+        [IDL.Opt(AIRecommendation)],
+        ['query'],
+      ),
     'getPortfolio' : IDL.Func([], [IDL.Vec(Holding)], []),
+    'getPriceHistoryForAsset' : IDL.Func(
+        [Asset],
+        [IDL.Vec(PriceHistoryEntry)],
+        ['query'],
+      ),
     'getProfitLoss' : IDL.Func([], [ProfitLoss], []),
     'getPurchaseHistory' : IDL.Func([IDL.Nat], [Result_2], []),
     'getStrategies' : IDL.Func([], [IDL.Vec(DCAStrategy)], []),
