@@ -93,6 +93,29 @@ persistent actor TradeWeaver {
     profitLossPercent : Float;
   };
 
+  // AI Recommendation for purchase decisions
+  public type AIRecommendation = {
+    action : AIAction;
+    confidence : Float; // 0.0 to 1.0
+    adjustedAmount : Nat; // AI-adjusted purchase amount in cents
+    reasoning : Text;
+    timestamp : Time.Time;
+  };
+
+  public type AIAction = {
+    #BuyNow; // Execute purchase immediately
+    #Wait; // Delay purchase (price trending down)
+    #BuyMore; // Increase purchase amount (good opportunity)
+    #BuyLess; // Decrease purchase amount (high prices)
+  };
+
+  // Price history entry for trend analysis
+  public type PriceHistoryEntry = {
+    asset : Asset;
+    price : Float;
+    timestamp : Time.Time;
+  };
+
   // ============================================
   // STATE VARIABLES
   // ============================================
@@ -120,6 +143,14 @@ persistent actor TradeWeaver {
     (#ETH, 3450.0),
     (#ICP, 11.5),
   ];
+
+  // Price history for AI trend analysis (keeps last 24 entries per asset)
+  stable var priceHistoryBTC : [PriceHistoryEntry] = [];
+  stable var priceHistoryETH : [PriceHistoryEntry] = [];
+  stable var priceHistoryICP : [PriceHistoryEntry] = [];
+
+  // Last AI recommendation cache
+  transient var lastAIRecommendation : ?AIRecommendation = null;
 
   // ============================================
   // UPGRADE HOOKS
@@ -625,6 +656,143 @@ persistent actor TradeWeaver {
   };
 
   // ============================================
+  // AI-POWERED DECISION ENGINE
+  // ============================================
+
+  // Record price for trend analysis
+  private func recordPrice(asset : Asset, price : Float) {
+    let entry : PriceHistoryEntry = {
+      asset = asset;
+      price = price;
+      timestamp = Time.now();
+    };
+
+    // Keep only last 24 entries
+    let maxHistory = 24;
+
+    switch (asset) {
+      case (#BTC) {
+        let newHistory = Array.append(priceHistoryBTC, [entry]);
+        if (newHistory.size() > maxHistory) {
+          priceHistoryBTC := Array.tabulate<PriceHistoryEntry>(maxHistory, func(i) = newHistory[newHistory.size() - maxHistory + i]);
+        } else {
+          priceHistoryBTC := newHistory;
+        };
+      };
+      case (#ETH) {
+        let newHistory = Array.append(priceHistoryETH, [entry]);
+        if (newHistory.size() > maxHistory) {
+          priceHistoryETH := Array.tabulate<PriceHistoryEntry>(maxHistory, func(i) = newHistory[newHistory.size() - maxHistory + i]);
+        } else {
+          priceHistoryETH := newHistory;
+        };
+      };
+      case (#ICP) {
+        let newHistory = Array.append(priceHistoryICP, [entry]);
+        if (newHistory.size() > maxHistory) {
+          priceHistoryICP := Array.tabulate<PriceHistoryEntry>(maxHistory, func(i) = newHistory[newHistory.size() - maxHistory + i]);
+        } else {
+          priceHistoryICP := newHistory;
+        };
+      };
+    };
+  };
+
+  // Get price history for an asset
+  private func getPriceHistory(asset : Asset) : [PriceHistoryEntry] {
+    switch (asset) {
+      case (#BTC) { priceHistoryBTC };
+      case (#ETH) { priceHistoryETH };
+      case (#ICP) { priceHistoryICP };
+    };
+  };
+
+  // Calculate simple moving average from history
+  private func calculateSMA(history : [PriceHistoryEntry]) : Float {
+    if (history.size() == 0) return 0.0;
+
+    var sum : Float = 0.0;
+    for (entry in history.vals()) {
+      sum += entry.price;
+    };
+    sum / Float.fromInt(history.size());
+  };
+
+  // Calculate price trend (-1 = down, 0 = stable, 1 = up)
+  private func calculateTrend(history : [PriceHistoryEntry]) : Float {
+    if (history.size() < 2) return 0.0;
+
+    let recent = history[history.size() - 1].price;
+    let sma = calculateSMA(history);
+
+    if (sma == 0.0) return 0.0;
+
+    // Percentage difference from SMA
+    (recent - sma) / sma;
+  };
+
+  /// AI-powered purchase recommendation
+  /// Analyzes price trends and market conditions to optimize DCA execution
+  public func getAIRecommendation(asset : Asset, baseAmount : Nat) : async AIRecommendation {
+    // 1. Fetch current price and record it
+    let priceResult = await fetchPrice(asset);
+    let currentPrice = switch (priceResult) {
+      case (#ok(p)) { p.priceUSD };
+      case (#err(_)) { 0.0 };
+    };
+
+    if (currentPrice > 0.0) {
+      recordPrice(asset, currentPrice);
+    };
+
+    // 2. Get price history and calculate trend
+    let history = getPriceHistory(asset);
+    let trend = calculateTrend(history);
+    let sma = calculateSMA(history);
+
+    // 3. AI decision logic based on trend analysis
+    let (action, confidence, multiplier, reasoning) : (AIAction, Float, Float, Text) = if (history.size() < 3) {
+      // Not enough data, proceed with normal buy
+      (#BuyNow, 0.6, 1.0, "Insufficient price history. Executing standard DCA purchase.");
+    } else if (trend < -0.05) {
+      // Price significantly below SMA (>5%), buy more
+      (#BuyMore, 0.85, 1.25, "Price is " # Float.toText(Float.abs(trend) * 100.0) # "% below average. Increasing purchase to capitalize on dip.");
+    } else if (trend > 0.08) {
+      // Price significantly above SMA (>8%), wait or buy less
+      (#BuyLess, 0.75, 0.75, "Price is " # Float.toText(trend * 100.0) # "% above average. Reducing purchase amount.");
+    } else if (trend > 0.15) {
+      // Price very high, consider waiting
+      (#Wait, 0.65, 0.0, "Price is significantly elevated. Recommending to delay purchase.");
+    } else {
+      // Normal market conditions
+      (#BuyNow, 0.8, 1.0, "Market conditions normal. Executing standard DCA purchase.");
+    };
+
+    let adjustedAmount = Int.abs(Float.toInt(Float.fromInt(baseAmount) * multiplier));
+
+    let recommendation : AIRecommendation = {
+      action = action;
+      confidence = confidence;
+      adjustedAmount = adjustedAmount;
+      reasoning = reasoning;
+      timestamp = Time.now();
+    };
+
+    lastAIRecommendation := ?recommendation;
+    recommendation;
+  };
+
+  /// Get the last AI recommendation (cached)
+  public query func getLastAIRecommendation() : async ?AIRecommendation {
+    lastAIRecommendation;
+  };
+
+  /// Get price history for analysis
+  public query func getPriceHistoryForAsset(asset : Asset) : async [PriceHistoryEntry] {
+    getPriceHistory(asset);
+  };
+
+  // ============================================
   // CHAIN FUSION - CROSS-CHAIN PURCHASE EXECUTION
   // ============================================
 
@@ -849,20 +1017,31 @@ persistent actor TradeWeaver {
     #ok(txHash);
   };
 
-  /// Execute a purchase for a strategy with Chain Fusion
+  /// Execute a purchase for a strategy with Chain Fusion and AI optimization
   private func executePurchase(strategy : DCAStrategy) : async Result.Result<Purchase, Text> {
-    // 1. Fetch real-time price
+    // 1. Get AI recommendation for optimal purchase
+    let aiRec = await getAIRecommendation(strategy.targetAsset, strategy.amount);
+
+    // 2. Check if AI recommends waiting
+    switch (aiRec.action) {
+      case (#Wait) {
+        return #err("AI recommends waiting: " # aiRec.reasoning);
+      };
+      case _ {};
+    };
+
+    // 3. Fetch real-time price (already fetched in AI, but get fresh)
     let priceResult = await fetchPrice(strategy.targetAsset);
     let price = switch (priceResult) {
       case (#ok(p)) { p.priceUSD };
       case (#err(e)) { return #err("Failed to fetch price: " # e) };
     };
 
-    // 2. Calculate amount to purchase
-    let amountUSD = Float.fromInt(strategy.amount);
+    // 4. Use AI-adjusted amount instead of base amount
+    let amountUSD = Float.fromInt(aiRec.adjustedAmount);
     let amountAsset = amountUSD / (price * 100.0);
 
-    // 3. Execute cross-chain purchase via Chain Fusion
+    // 5. Execute cross-chain purchase via Chain Fusion
     let txResult = switch (strategy.targetAsset) {
       case (#BTC) { await purchaseBTC(strategy, price, amountAsset) };
       case (#ETH) { await purchaseETH(strategy, price, amountAsset) };
@@ -874,19 +1053,19 @@ persistent actor TradeWeaver {
       case (#err(e)) { return #err("Transaction failed: " # e) };
     };
 
-    // 4. Create purchase record
+    // 6. Create purchase record (with AI-adjusted amount)
     let purchase : Purchase = {
       id = nextPurchaseId;
       strategyId = strategy.id;
       asset = strategy.targetAsset;
-      amountUSD = strategy.amount;
+      amountUSD = aiRec.adjustedAmount; // AI-adjusted amount
       amountAsset = amountAsset;
       price = price;
       timestamp = Time.now();
-      txHash = txHash;
+      txHash = txHash # " | AI: " # aiRec.reasoning; // Include AI reasoning
     };
 
-    // 5. Record purchase in history
+    // 7. Record purchase in history
     let history = switch (purchases.get(strategy.id)) {
       case null { [purchase] };
       case (?existing) { Array.append(existing, [purchase]) };

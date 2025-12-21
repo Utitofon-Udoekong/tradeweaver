@@ -1,7 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Actor, HttpAgent, ActorSubclass, Identity, AnonymousIdentity } from "@dfinity/agent";
+import { AuthClient } from "@dfinity/auth-client";
+import { Actor, HttpAgent, ActorSubclass } from "@dfinity/agent";
 import { idlFactory } from "../../declarations/tradeweaver_backend/tradeweaver_backend.did.js";
 import type { _SERVICE } from "../../declarations/tradeweaver_backend/tradeweaver_backend.did";
 
@@ -21,6 +22,7 @@ interface ICPContextType {
 const ICPContext = createContext<ICPContextType | null>(null);
 
 export function ICPProvider({ children }: { children: ReactNode }) {
+    const [authClient, setAuthClient] = useState<AuthClient | null>(null);
     const [actor, setActor] = useState<ActorSubclass<_SERVICE> | null>(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -32,15 +34,41 @@ export function ICPProvider({ children }: { children: ReactNode }) {
 
     const initAuth = async () => {
         try {
-            await createActor(new AnonymousIdentity());
+            const client = await AuthClient.create();
+            setAuthClient(client);
+
+            const isAuth = await client.isAuthenticated();
+            setIsAuthenticated(isAuth);
+
+            if (isAuth) {
+                await updateActor(client);
+            } else {
+                await createAnonymousActor();
+            }
         } catch (error) {
-            console.error("Failed to init:", error);
+            console.error("Failed to init auth:", error);
+            await createAnonymousActor();
         } finally {
             setIsLoading(false);
         }
     };
 
-    const createActor = async (identity: Identity) => {
+    const createAnonymousActor = async () => {
+        const agent = new HttpAgent({ host: HOST });
+
+        if (DFX_NETWORK === "local") {
+            await agent.fetchRootKey().catch(console.error);
+        }
+
+        const newActor = Actor.createActor<_SERVICE>(idlFactory, {
+            agent,
+            canisterId: CANISTER_ID,
+        });
+        setActor(newActor);
+    };
+
+    const updateActor = async (client: AuthClient) => {
+        const identity = client.getIdentity();
         const agent = new HttpAgent({ identity, host: HOST });
 
         if (DFX_NETWORK === "local") {
@@ -52,20 +80,32 @@ export function ICPProvider({ children }: { children: ReactNode }) {
             canisterId: CANISTER_ID,
         });
         setActor(newActor);
-
-        const principalId = identity.getPrincipal().toText();
-        setPrincipal(principalId);
+        setPrincipal(identity.getPrincipal().toText());
     };
 
     const login = async () => {
-        // For local dev: just set authenticated (no II canister needed)
-        setIsAuthenticated(true);
-        setPrincipal("local-dev-user");
+        if (!authClient) return;
+
+        const identityProvider = DFX_NETWORK === "local"
+            ? "http://rdmx6-jaaaa-aaaaa-aaadq-cai.localhost:4943"
+            : "https://identity.ic0.app";
+
+        await authClient.login({
+            identityProvider,
+            maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000),
+            onSuccess: async () => {
+                setIsAuthenticated(true);
+                await updateActor(authClient);
+            },
+        });
     };
 
     const logout = async () => {
+        if (!authClient) return;
+        await authClient.logout();
         setIsAuthenticated(false);
         setPrincipal(null);
+        await createAnonymousActor();
     };
 
     return (
