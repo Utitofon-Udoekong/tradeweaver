@@ -9,6 +9,10 @@
       "source": ["src/tradeweaver_frontend/out"],
       "type": "assets",
       "workspace": "tradeweaver_frontend"
+    },
+    "internet_identity": {
+      "type": "pull",
+      "id": "rdmx6-jaaaa-aaaaa-aaadq-cai"
     }
   },
   "defaults": {
