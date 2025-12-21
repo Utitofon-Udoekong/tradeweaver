@@ -1,66 +1,50 @@
-# TradeWeaver DCA Bot
+# TradeWeaver
 
-> Autonomous Dollar-Cost Averaging on ICP with Cross-Chain Support
+Autonomous DCA (Dollar-Cost Averaging) agent built on ICP with Chain Fusion for cross-chain crypto purchases.
 
 ## Features
 
-- 🔄 **Automated Recurring Purchases** - Daily, weekly, biweekly, or monthly
-- ⛓️ **Multi-Chain Support** - BTC, ETH, ICP via Chain Fusion
-- 📊 **Real-Time Analytics** - Portfolio tracking and P&L reporting
-- 💰 **Cost Basis Tracking** - Average price calculations
-- 🎯 **Set-and-Forget** - Fully autonomous execution
+- **Recurring purchases** – Daily, weekly, biweekly, or monthly schedules
+- **Multi-chain support** – BTC, ETH, ICP via Chain Fusion threshold signatures
+- **Real-time pricing** – CoinGecko API via HTTPS outcalls
+- **Portfolio analytics** – Cost basis tracking and P&L calculation
+- **Web dashboard** – Next.js frontend with Internet Identity auth
 
-## Quick Start
+## Tech Stack
 
-### Prerequisites
-- [dfx](https://internetcomputer.org/docs/current/developer-docs/setup/install/) CLI installed
-- Node.js 18+ for frontend
+| Layer | Technology |
+|-------|------------|
+| Backend | Motoko on ICP |
+| Frontend | Next.js 16, Tailwind CSS |
+| Cross-chain | Threshold Schnorr (BTC), ECDSA (ETH) |
+| Auth | Internet Identity |
 
-### Local Development
+## Development
 
-```bash
-# Start local replica
+**Prerequisites:** [dfx](https://internetcomputer.org/docs/current/developer-docs/setup/install/) CLI, Node.js 18+
+
+**Start local replica:**
+```
 dfx start --clean --background
-
-# Deploy canisters
-dfx deploy
-
-# Test backend
-dfx canister call tradeweaver_backend createAccount
-dfx canister call tradeweaver_backend createStrategy '(variant { BTC }, 10000, variant { Weekly })'
-dfx canister call tradeweaver_backend triggerExecution '(0)'
-dfx canister call tradeweaver_backend getProfitLoss
+dfx deploy tradeweaver_backend
 ```
 
-## Architecture
-
-- **Backend:** Motoko canisters on ICP
-- **Frontend:** Next.js 16 + TailwindCSS
-- **Cross-chain:** ICP Chain Fusion (threshold signatures)
-- **Price Oracle:** HTTPS Outcalls to Coinbase API
-- **Scheduling:** ICP timers for autonomous execution
+**Run frontend:**
+```
+cd src/tradeweaver_frontend
+npm install
+npm run dev
+```
 
 ## Project Structure
 
 ```
-tradeweaver/
-├── src/
-│   ├── tradeweaver_backend/    # Motoko canister
-│   │   └── main.mo
-│   └── tradeweaver_frontend/   # Next.js dashboard
-├── docs/
-│   ├── architecture.md
-│   ├── api-reference.md
-│   └── user-guide.md
-├── test/
-├── dfx.json
-└── README.md
+├── src/tradeweaver_backend/   # Motoko canister
+├── src/tradeweaver_frontend/  # Next.js dashboard
+├── docs/                      # Documentation
+└── dfx.json                   # ICP config
 ```
-
-## Bounty Submission
-
-This project is for **ICP Bounty #1148**: AI Agents for Trading & Web3 Automation
 
 ## License
 
-MIT License
+MIT

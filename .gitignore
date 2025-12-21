@@ -1,27 +1,25 @@
 # Dependencies
 node_modules/
-.npm
 
-# dfx generated files
+# dfx
 .dfx/
 canister_ids.json
 
-# Build outputs
+# Build
 dist/
 out/
 .next/
 build/
 
-# Environment files
+# Env
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # IDE
 .idea/
 .vscode/
 *.swp
-*.swo
 *~
 
 # OS
@@ -30,13 +28,12 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
-
-# Test coverage
-coverage/
 
 # TypeScript
 *.tsbuildinfo
 
-# Motoko build artifacts
+# Motoko
 .vessel/
+
+# Next.js
+.vercel

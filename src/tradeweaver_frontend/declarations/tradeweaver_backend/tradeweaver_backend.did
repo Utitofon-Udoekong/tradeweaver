@@ -1,0 +1,153 @@
+type UserAccount = 
+ record {
+   balance: nat;
+   createdAt: Time;
+   "principal": principal;
+ };
+type TransformArgs = 
+ record {
+   context: blob;
+   response: HttpResponsePayload;
+ };
+type Time = int;
+type Result_5 = 
+ variant {
+   err: text;
+   ok: PriceResponse;
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: UserAccount;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: vec Purchase;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: DCAStrategy;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: Purchase;
+ };
+type Purchase = 
+ record {
+   amountAsset: float64;
+   amountUSD: nat;
+   asset: Asset;
+   id: nat;
+   price: float64;
+   strategyId: nat;
+   timestamp: Time;
+   txHash: text;
+ };
+type ProfitLoss = 
+ record {
+   profitLoss: float64;
+   profitLossPercent: float64;
+   totalCost: float64;
+   totalValue: float64;
+ };
+type PriceResponse = 
+ record {
+   asset: Asset;
+   priceUSD: float64;
+   timestamp: Time;
+ };
+type HttpResponsePayload = 
+ record {
+   body: vec nat8;
+   headers: vec HttpHeader;
+   status: nat;
+ };
+type HttpHeader = 
+ record {
+   name: text;
+   value: text;
+ };
+type Holding = 
+ record {
+   amount: float64;
+   asset: Asset;
+   averagePrice: float64;
+   costBasis: float64;
+ };
+type Frequency = 
+ variant {
+   Biweekly;
+   Daily;
+   Monthly;
+   Weekly;
+ };
+type DCAStrategy = 
+ record {
+   active: bool;
+   amount: nat;
+   createdAt: Time;
+   frequency: Frequency;
+   id: nat;
+   nextExecution: Time;
+   owner: principal;
+   targetAsset: Asset;
+ };
+type Asset = 
+ variant {
+   BTC;
+   ETH;
+   ICP;
+ };
+service : {
+  /// Check and execute all due strategies (called by timer or manually)
+  checkAndExecuteStrategies: () -> (nat);
+  /// Create a new user account
+  createAccount: () -> (Result_4);
+  /// Create a new DCA strategy
+  createStrategy: (targetAsset: Asset, amount: nat, frequency: Frequency) ->
+   (Result_1);
+  /// Fetch current price for an asset via HTTPS outcall
+  fetchPrice: (asset: Asset) -> (Result_5);
+  /// Get user account info
+  getAccount: () -> (Result_4);
+  /// Get prices for all assets
+  getAllPrices: () -> (vec record {
+                             Asset;
+                             float64;
+                           });
+  /// Get all purchases for the caller
+  getAllPurchases: () -> (vec Purchase);
+  /// Get user's Bitcoin address (derived from Schnorr public key)
+  getBitcoinAddress: () -> (Result_3);
+  /// Get user's Ethereum address (derived from ECDSA public key)
+  getEthereumAddress: () -> (Result_3);
+  /// Get portfolio holdings
+  getPortfolio: () -> (vec Holding);
+  /// Calculate profit/loss
+  getProfitLoss: () -> (ProfitLoss);
+  /// Get purchase history for a specific strategy
+  getPurchaseHistory: (strategyId: nat) -> (Result_2);
+  /// Get all strategies for the caller
+  getStrategies: () -> (vec DCAStrategy);
+  /// Get a specific strategy
+  getStrategy: (strategyId: nat) -> (Result_1) query;
+  /// Get total number of strategies (for testing)
+  getTotalStrategies: () -> (nat) query;
+  /// Get total number of users (for testing)
+  getTotalUsers: () -> (nat) query;
+  /// Pause a DCA strategy
+  pauseStrategy: (strategyId: nat) -> (Result_1);
+  /// Resume a paused DCA strategy
+  resumeStrategy: (strategyId: nat) -> (Result_1);
+  transform: (raw: TransformArgs) -> (HttpResponsePayload) query;
+  /// Manual trigger for testing a specific strategy
+  triggerExecution: (strategyId: nat) -> (Result);
+}
