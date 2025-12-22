@@ -1264,6 +1264,101 @@ persistent actor TradeWeaver {
     #ok(purchase);
   };
 
+  /// Execute a one-time immediate trade (not a recurring DCA strategy)
+  public shared (msg) func executeTrade(
+    tradeType : StrategyType,
+    asset : Asset,
+    amountCents : Nat,
+  ) : async Result.Result<Purchase, Text> {
+    let caller = msg.caller;
+
+    // Ensure user has an account
+    switch (users.get(caller)) {
+      case null {
+        let account : UserAccount = {
+          principal = caller;
+          balance = 0;
+          createdAt = Time.now();
+        };
+        users.put(caller, account);
+      };
+      case (?_) {};
+    };
+
+    // Validate amount (minimum $1 = 100 cents)
+    if (amountCents < 100) {
+      return #err("Minimum trade amount is $1 (100 cents)");
+    };
+
+    // Fetch real-time price
+    let priceResult = await fetchPrice(asset);
+    let price = switch (priceResult) {
+      case (#ok(p)) { p.priceUSD };
+      case (#err(e)) { return #err("Failed to fetch price: " # e) };
+    };
+
+    // Calculate asset amount
+    let amountUSD = Float.fromInt(amountCents);
+    let amountAsset = amountUSD / (price * 100.0);
+
+    // Create a minimal strategy struct for the purchase functions
+    let tempStrategy : DCAStrategy = {
+      id = 0; // 0 indicates one-time trade
+      owner = caller;
+      strategyType = tradeType;
+      targetAsset = asset;
+      amount = amountCents;
+      frequency = #Daily; // Placeholder, not used
+      triggerCondition = #None;
+      intervalSeconds = 0;
+      nextExecution = Time.now();
+      active = false;
+      createdAt = Time.now();
+      executionCount = 0;
+    };
+
+    // Execute cross-chain trade via Chain Fusion
+    let txResult = switch (asset) {
+      case (#BTC) { await purchaseBTC(tempStrategy, price, amountAsset) };
+      case (#ETH) { await purchaseETH(tempStrategy, price, amountAsset) };
+      case (#ICP) { await purchaseICP(tempStrategy, price, amountAsset) };
+    };
+
+    let txHash = switch (txResult) {
+      case (#ok(hash)) { hash };
+      case (#err(e)) { return #err("Trade failed: " # e) };
+    };
+
+    // Determine action text
+    let actionText = switch (tradeType) {
+      case (#Buy) { "Buy" };
+      case (#Sell) { "Sell" };
+    };
+
+    // Create purchase record
+    let purchase : Purchase = {
+      id = nextPurchaseId;
+      strategyId = 0; // 0 = one-time trade
+      asset = asset;
+      amountUSD = amountCents;
+      amountAsset = amountAsset;
+      price = price;
+      timestamp = Time.now();
+      txHash = txHash # " | " # actionText # " Trade";
+    };
+
+    // Record in purchases under strategyId 0 (trades bucket)
+    let history = switch (purchases.get(0)) {
+      case null { [purchase] };
+      case (?existing) { Array.append(existing, [purchase]) };
+    };
+    purchases.put(0, history);
+
+    nextPurchaseId += 1;
+
+    #ok(purchase);
+  };
+
   // ============================================
   // CHAIN FUSION - WALLET UTILITIES
   // ============================================

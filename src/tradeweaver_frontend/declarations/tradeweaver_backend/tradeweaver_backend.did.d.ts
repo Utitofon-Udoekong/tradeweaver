@@ -126,6 +126,10 @@ export interface _SERVICE {
    */
   'deleteStrategy' : ActorMethod<[bigint], Result_6>,
   /**
+   * / Execute a one-time immediate trade (not a recurring DCA strategy)
+   */
+  'executeTrade' : ActorMethod<[StrategyType, Asset, bigint], Result>,
+  /**
    * / Fetch current price for an asset via HTTPS outcall
    */
   'fetchPrice' : ActorMethod<[Asset], Result_5>,

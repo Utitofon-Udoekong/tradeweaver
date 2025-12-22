@@ -161,6 +161,9 @@ service : {
    nat, frequency: Frequency, condition: opt TriggerCondition) -> (Result_1);
   /// Delete a DCA strategy
   deleteStrategy: (strategyId: nat) -> (Result_6);
+  /// Execute a one-time immediate trade (not a recurring DCA strategy)
+  executeTrade: (tradeType: StrategyType, asset: Asset, amountCents: 
+   nat) -> (Result);
   /// Fetch current price for an asset via HTTPS outcall
   fetchPrice: (asset: Asset) -> (Result_5);
   /// AI-powered purchase recommendation

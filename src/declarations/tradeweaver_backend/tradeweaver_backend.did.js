@@ -43,6 +43,17 @@ export const idlFactory = ({ IDL }) => {
   });
   const Result_1 = IDL.Variant({ 'ok' : DCAStrategy, 'err' : IDL.Text });
   const Result_6 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const Purchase = IDL.Record({
+    'id' : IDL.Nat,
+    'asset' : Asset,
+    'amountAsset' : IDL.Float64,
+    'timestamp' : Time,
+    'txHash' : IDL.Text,
+    'amountUSD' : IDL.Nat,
+    'price' : IDL.Float64,
+    'strategyId' : IDL.Nat,
+  });
+  const Result = IDL.Variant({ 'ok' : Purchase, 'err' : IDL.Text });
   const PriceResponse = IDL.Record({
     'asset' : Asset,
     'timestamp' : Time,
@@ -61,16 +72,6 @@ export const idlFactory = ({ IDL }) => {
     'timestamp' : Time,
     'confidence' : IDL.Float64,
     'adjustedAmount' : IDL.Nat,
-  });
-  const Purchase = IDL.Record({
-    'id' : IDL.Nat,
-    'asset' : Asset,
-    'amountAsset' : IDL.Float64,
-    'timestamp' : Time,
-    'txHash' : IDL.Text,
-    'amountUSD' : IDL.Nat,
-    'price' : IDL.Float64,
-    'strategyId' : IDL.Nat,
   });
   const Result_3 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const Holding = IDL.Record({
@@ -101,7 +102,6 @@ export const idlFactory = ({ IDL }) => {
     'context' : IDL.Vec(IDL.Nat8),
     'response' : HttpResponsePayload,
   });
-  const Result = IDL.Variant({ 'ok' : Purchase, 'err' : IDL.Text });
   return IDL.Service({
     'checkAndExecuteStrategies' : IDL.Func([], [IDL.Nat], []),
     'createAccount' : IDL.Func([], [Result_4], []),
@@ -111,6 +111,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'deleteStrategy' : IDL.Func([IDL.Nat], [Result_6], []),
+    'executeTrade' : IDL.Func([StrategyType, Asset, IDL.Nat], [Result], []),
     'fetchPrice' : IDL.Func([Asset], [Result_5], []),
     'getAIRecommendation' : IDL.Func([Asset, IDL.Nat], [AIRecommendation], []),
     'getAccount' : IDL.Func([], [Result_4], []),

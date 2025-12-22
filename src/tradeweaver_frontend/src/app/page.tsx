@@ -34,6 +34,7 @@ export default function Dashboard() {
   const commands = [
     { cmd: '/buy', desc: 'Create DCA buy strategy (BTC/ETH/ICP)', example: '/buy $50 BTC daily' },
     { cmd: '/sell', desc: 'Create DCA sell strategy (BTC/ETH/ICP)', example: '/sell $50 BTC daily' },
+    { cmd: '/trade', desc: 'Immediate one-time trade', example: '/trade buy $100 BTC' },
     { cmd: '/run', desc: 'Execute a strategy now', example: '/run 1' },
     { cmd: '/pause', desc: 'Pause automatic execution', example: '/pause 1' },
     { cmd: '/resume', desc: 'Resume paused strategy', example: '/resume 1' },
@@ -230,6 +231,75 @@ Type \`/help\` for full documentation or just describe what you want!`,
     const rawInput = input;
     setInput('');
     setIsProcessing(true);
+
+    // Handle /trade command specially (one-time immediate trade)
+    if (rawInput.startsWith('/trade ')) {
+      const tradeText = rawInput.replace('/trade ', '').toLowerCase();
+      const isSell = tradeText.includes('sell');
+      const isBuy = tradeText.includes('buy');
+
+      // Extract asset
+      let asset: 'BTC' | 'ETH' | 'ICP' | null = null;
+      if (tradeText.includes('btc') || tradeText.includes('bitcoin')) asset = 'BTC';
+      else if (tradeText.includes('eth') || tradeText.includes('ethereum')) asset = 'ETH';
+      else if (tradeText.includes('icp')) asset = 'ICP';
+
+      // Extract amount
+      const amountMatch = tradeText.match(/\$?(\d+)/);
+      const amount = amountMatch ? parseInt(amountMatch[1]) : null;
+
+      if (!asset || !amount || (!isBuy && !isSell)) {
+        const agentMessage: Message = {
+          id: Date.now() + 1,
+          role: 'agent',
+          content: `Invalid trade format. Use: \`/trade buy $100 BTC\` or \`/trade sell $50 ETH\``,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, agentMessage]);
+        setIsProcessing(false);
+        return;
+      }
+
+      try {
+        const tradeType = isSell ? { Sell: null } : { Buy: null };
+        const assetType = asset === 'BTC' ? { BTC: null } : asset === 'ETH' ? { ETH: null } : { ICP: null };
+        const result = await actor.executeTrade(tradeType, assetType, BigInt(amount * 100));
+
+        if ('ok' in result) {
+          lastManualRun.current = Date.now();
+          queryClient.invalidateQueries({ queryKey: ['purchases'] });
+
+          const actionVerb = isSell ? 'Sold' : 'Bought';
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `✅ **Trade Executed!**\n\n${actionVerb} $${amount} of ${asset} at $${result.ok.price.toLocaleString()}\n\nAmount: ${result.ok.amountAsset.toFixed(8)} ${asset}`,
+            timestamp: new Date(),
+            action: { type: 'purchase_executed' }
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else {
+          const agentMessage: Message = {
+            id: Date.now() + 1,
+            role: 'agent',
+            content: `❌ Trade failed: ${result.err}`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        }
+      } catch (e) {
+        console.error(e);
+        const agentMessage: Message = {
+          id: Date.now() + 1,
+          role: 'agent',
+          content: `Something went wrong executing the trade. Try again?`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, agentMessage]);
+      }
+      setIsProcessing(false);
+      return;
+    }
 
     // Preprocess slash commands
     let processedInput = rawInput;
@@ -514,11 +584,18 @@ Type \`/help\` for full documentation or just describe what you want!`,
         const helpText = `**TradeWeaver - DCA Trading Bot**
 
 **What is this?**
-TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling** crypto assets at specified intervals.
+TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling** crypto assets at specified intervals. You can also execute one-time trades.
 
 ---
 
-**CREATING STRATEGIES**
+**ONE-TIME TRADES**
+
+\`/trade buy $100 BTC\` - Buy $100 of Bitcoin now
+\`/trade sell $50 ETH\` - Sell $50 of Ethereum now
+
+---
+
+**CREATING DCA STRATEGIES**
 
 **Buy Strategy:** \`/buy <amount> <asset> <frequency> [condition]\`
 **Sell Strategy:** \`/sell <amount> <asset> <frequency> [condition]\`
