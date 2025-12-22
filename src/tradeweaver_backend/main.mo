@@ -557,7 +557,32 @@ persistent actor TradeWeaver {
           return #err("Not authorized");
         };
 
-        await executePurchase(strategy);
+        let result = await executePurchase(strategy);
+
+        // Update nextExecution after manual trigger to prevent heartbeat from re-executing immediately
+        switch (result) {
+          case (#ok(_)) {
+            let now = Time.now();
+            let updated : DCAStrategy = {
+              id = strategy.id;
+              owner = strategy.owner;
+              strategyType = strategy.strategyType;
+              targetAsset = strategy.targetAsset;
+              amount = strategy.amount;
+              frequency = strategy.frequency;
+              triggerCondition = strategy.triggerCondition;
+              intervalSeconds = strategy.intervalSeconds;
+              nextExecution = calculateNextExecution(strategy.frequency, now);
+              active = strategy.active;
+              createdAt = strategy.createdAt;
+              executionCount = strategy.executionCount + 1;
+            };
+            strategies.put(strategyId, updated);
+          };
+          case (#err(_)) {};
+        };
+
+        result;
       };
     };
   };

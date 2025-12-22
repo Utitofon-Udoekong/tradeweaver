@@ -69,6 +69,54 @@ export default function Dashboard() {
     enabled: !!actor && isAuthenticated,
   });
 
+  // Auto-execution heartbeat - checks every 5 seconds for due strategies
+  const [autoExecuteEnabled, setAutoExecuteEnabled] = useState(true);
+  const [lastExecutionLog, setLastExecutionLog] = useState<string | null>(null);
+  const lastManualRun = useRef<number>(0);
+
+  useEffect(() => {
+    if (!actor || !isAuthenticated || !autoExecuteEnabled) return;
+
+    const checkAndExecute = async () => {
+      // Skip if we manually ran a command recently (prevention for race conditions)
+      if (Date.now() - lastManualRun.current < 10000) return;
+
+      try {
+        const result = await actor.checkAndExecuteStrategies();
+        const count = Number(result);
+        if (count > 0) {
+          // Strategies were executed, refresh data
+          queryClient.invalidateQueries({ queryKey: ['strategies'] });
+          queryClient.invalidateQueries({ queryKey: ['purchases'] });
+
+          const logMsg = `⚡ Auto-executed ${count} strateg${count === 1 ? 'y' : 'ies'}`;
+          setLastExecutionLog(logMsg);
+
+          // Add system message about auto-execution
+          const autoMessage: Message = {
+            id: Date.now(),
+            role: 'agent',
+            content: `${logMsg}\n\nType \`/portfolio\` to see your updated holdings.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, autoMessage]);
+
+          // Clear the log after 5 seconds
+          setTimeout(() => setLastExecutionLog(null), 5000);
+        }
+      } catch (error) {
+        // Silent fail for heartbeat - don't spam errors
+        console.log('Heartbeat check:', error);
+      }
+    };
+
+    // Run immediately and then every 5 seconds
+    checkAndExecute();
+    const interval = setInterval(checkAndExecute, 5000);
+
+    return () => clearInterval(interval);
+  }, [actor, isAuthenticated, autoExecuteEnabled, queryClient]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -282,6 +330,7 @@ Type \`/help\` for full documentation or just describe what you want!`,
         if (strategyNum > 0 && strategyNum <= strategies.length) {
           const strategy = strategies[strategyNum - 1];
           await actor.triggerExecution(strategy.id);
+          lastManualRun.current = Date.now();
           queryClient.invalidateQueries({ queryKey: ['purchases'] });
           queryClient.invalidateQueries({ queryKey: ['strategies'] });
 
@@ -395,6 +444,7 @@ Type \`/help\` for full documentation or just describe what you want!`,
           // Only one strategy, run it
           const strategy = strategies[0];
           await actor.triggerExecution(strategy.id);
+          lastManualRun.current = Date.now();
           queryClient.invalidateQueries({ queryKey: ['purchases'] });
           queryClient.invalidateQueries({ queryKey: ['strategies'] });
 
@@ -676,6 +726,18 @@ TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling*
               </div>
             ))}
           </div>
+          {/* Heartbeat toggle */}
+          <button
+            onClick={() => setAutoExecuteEnabled(!autoExecuteEnabled)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition ${autoExecuteEnabled
+              ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+              : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
+              }`}
+            title={autoExecuteEnabled ? 'Auto-execution ON' : 'Auto-execution OFF'}
+          >
+            <span className={`h-2 w-2 rounded-full ${autoExecuteEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+            Auto
+          </button>
           <button onClick={logout} className="text-sm text-slate-400 hover:text-white transition">
             Logout
           </button>
