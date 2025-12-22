@@ -2,6 +2,9 @@
 
 export type AssetType = { BTC: null } | { ETH: null } | { ICP: null };
 
+// Strategy type - Buy or Sell
+export type StrategyTypeType = { Buy: null } | { Sell: null };
+
 // Flexible frequency types
 export type FrequencyType = 
   | { Seconds: bigint }
@@ -22,6 +25,7 @@ export type TriggerConditionType =
 export interface Strategy {
   id: bigint;
   owner: { __principal__: string };
+  strategyType: StrategyTypeType;
   targetAsset: AssetType;
   amount: bigint;
   frequency: FrequencyType;
@@ -105,4 +109,10 @@ export function formatUSD(cents: bigint | number): string {
 
 export function formatCrypto(amount: number, decimals: number = 6): string {
   return amount.toFixed(decimals);
+}
+
+export function getStrategyTypeLabel(type: StrategyTypeType): string {
+  if ('Buy' in type) return 'BUY';
+  if ('Sell' in type) return 'SELL';
+  return 'Unknown';
 }

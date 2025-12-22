@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2, Zap, Send, Bot, User, TrendingUp, Wallet, Bitcoin, Brain, Shield, Link2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { getAssetSymbol, formatUSD, formatCrypto, getFrequencyLabel, type AssetType, type FrequencyType, type TriggerConditionType } from "@/lib/types";
+import { getAssetSymbol, formatUSD, formatCrypto, getFrequencyLabel, getStrategyTypeLabel, type AssetType, type FrequencyType, type TriggerConditionType, type StrategyTypeType } from "@/lib/types";
 import ReactMarkdown from "react-markdown";
 
 interface Message {
@@ -33,6 +33,7 @@ export default function Dashboard() {
   // Available slash commands
   const commands = [
     { cmd: '/buy', desc: 'Create DCA buy strategy (BTC/ETH/ICP)', example: '/buy $50 BTC daily' },
+    { cmd: '/sell', desc: 'Create DCA sell strategy (BTC/ETH/ICP)', example: '/sell $50 BTC daily' },
     { cmd: '/run', desc: 'Execute a strategy now', example: '/run 1' },
     { cmd: '/pause', desc: 'Pause automatic execution', example: '/pause 1' },
     { cmd: '/resume', desc: 'Resume paused strategy', example: '/resume 1' },
@@ -102,6 +103,7 @@ Type \`/help\` for full documentation or just describe what you want!`,
     amount?: number;
     frequency?: { type: string; value?: number };
     condition?: { type: string; value?: number };
+    isSell?: boolean;
   } | null => {
     const lower = text.toLowerCase();
 
@@ -158,8 +160,11 @@ Type \`/help\` for full documentation or just describe what you want!`,
       condition = { type: 'PriceAbove', value: parseFloat(aboveMatch[1]) };
     }
 
+    // Detect if this is a sell command
+    const isSell = lower.includes('sell') || lower.includes('selling');
+
     if (asset || amount || frequency || condition) {
-      return { asset, amount, frequency, condition };
+      return { asset, amount, frequency, condition, isSell };
     }
     return null;
   };
@@ -182,6 +187,8 @@ Type \`/help\` for full documentation or just describe what you want!`,
     let processedInput = rawInput;
     if (rawInput.startsWith('/buy ')) {
       processedInput = rawInput.replace('/buy ', 'Buy ');
+    } else if (rawInput.startsWith('/sell ')) {
+      processedInput = rawInput.replace('/sell ', 'Sell ');
     } else if (rawInput.startsWith('/run ')) {
       processedInput = 'run ' + rawInput.replace('/run ', '');
     } else if (rawInput.startsWith('/pause ')) {
@@ -235,7 +242,12 @@ Type \`/help\` for full documentation or just describe what you want!`,
           }
         }
 
-        const result = await actor.createStrategy(asset, BigInt(parsed.amount * 100), freq, condition ? [condition] : []);
+        // Build strategy type
+        const strategyType: StrategyTypeType = parsed.isSell ? { Sell: null } : { Buy: null };
+        const actionWord = parsed.isSell ? 'sell' : 'purchase';
+        const actionVerb = parsed.isSell ? 'Sell' : 'Buy';
+
+        const result = await actor.createStrategy(strategyType, asset, BigInt(parsed.amount * 100), freq, condition ? [condition] : []);
 
         if ('ok' in result) {
           queryClient.invalidateQueries({ queryKey: ['strategies'] });
@@ -249,13 +261,14 @@ Type \`/help\` for full documentation or just describe what you want!`,
           let condText = '';
           if (parsed.condition) {
             if (parsed.condition.type === 'PriceBelow') condText = `, only if price is under $${parsed.condition.value}`;
+            else if (parsed.condition.type === 'PriceAbove') condText = `, only if price is above $${parsed.condition.value}`;
             else if (parsed.condition.type === 'PriceDropPercent') condText = `, when price drops ${parsed.condition.value}%`;
           }
 
           const agentMessage: Message = {
             id: Date.now() + 1,
             role: 'agent',
-            content: `Done! I've set up a ${freqText} purchase of $${parsed.amount} in ${parsed.asset}${condText}.\n\n🧠 My AI will analyze market trends before each purchase and adjust the amount ±25% to get you better prices.\n\nSay **"execute"** or **"buy now"** to run a purchase now!`,
+            content: `✅ **${actionVerb} Strategy Created!**\n\nI've set up a ${freqText} ${actionWord} of $${parsed.amount} in ${parsed.asset}${condText}.\n\n🧠 My AI will analyze market trends before each ${actionWord} and adjust the amount ±25% to optimize execution.\n\nUse \`/run 1\` to execute now!`,
             timestamp: new Date(),
             action: { type: 'strategy_created', data: result.ok }
           };
@@ -451,13 +464,14 @@ Type \`/help\` for full documentation or just describe what you want!`,
         const helpText = `**TradeWeaver - DCA Trading Bot**
 
 **What is this?**
-TradeWeaver is a Dollar-Cost Averaging (DCA) bot. It automates recurring purchases of crypto assets at specified intervals.
+TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling** crypto assets at specified intervals.
 
 ---
 
 **CREATING STRATEGIES**
 
-\`/buy <amount> <asset> <frequency> [condition]\`
+**Buy Strategy:** \`/buy <amount> <asset> <frequency> [condition]\`
+**Sell Strategy:** \`/sell <amount> <asset> <frequency> [condition]\`
 
 **Assets:** BTC, ETH, ICP
 **Amounts:** $10, $50, $100, etc.
@@ -467,17 +481,16 @@ TradeWeaver is a Dollar-Cost Averaging (DCA) bot. It automates recurring purchas
 • \`hourly\` - Once per hour
 • \`every 30 seconds\` - Custom interval
 • \`every 5 minutes\` - Custom interval
-• \`every 2 hours\` - Custom interval
 
 **Conditions (optional):**
-• \`if under $10\` - Only buy if price below $10
-• \`if above $100\` - Only buy if price above $100
+• \`if under $10\` - Only execute if price below $10
+• \`if above $100\` - Only execute if price above $100
 
 **Examples:**
-• \`/buy $50 BTC daily\`
-• \`/buy $100 ETH weekly\`
-• \`/buy $25 ICP every 10 seconds\`
-• \`/buy $50 BTC daily if under $100000\`
+• \`/buy $50 BTC daily\` - Buy $50 BTC every day
+• \`/sell $100 ETH weekly\` - Sell $100 ETH every week
+• \`/buy $25 ICP every 10 seconds\` - High-frequency buy
+• \`/sell $50 BTC if above $100000\` - Take profits above $100k
 
 ---
 
@@ -499,8 +512,8 @@ TradeWeaver is a Dollar-Cost Averaging (DCA) bot. It automates recurring purchas
 ---
 
 **Notes:**
-• AI adjusts buy amounts ±25% based on market trends
-• Purchases are simulated in demo mode`;
+• AI adjusts amounts ±25% based on market trends
+• Execute strategies manually with \`/run 1\``;
 
         const agentMessage: Message = {
           id: Date.now() + 1,

@@ -28,6 +28,7 @@ export interface DCAStrategy {
   'frequency' : Frequency,
   'nextExecution' : Time,
   'amount' : bigint,
+  'strategyType' : StrategyType,
 }
 export type Frequency = { 'Minutes' : bigint } |
   { 'Seconds' : bigint } |
@@ -87,6 +88,8 @@ export type Result_5 = { 'ok' : PriceResponse } |
   { 'err' : string };
 export type Result_6 = { 'ok' : null } |
   { 'err' : string };
+export type StrategyType = { 'Buy' : null } |
+  { 'Sell' : null };
 export type Time = bigint;
 export interface TransformArgs {
   'context' : Uint8Array | number[],
@@ -115,7 +118,7 @@ export interface _SERVICE {
    * / Create a new DCA strategy with flexible timing and optional conditions
    */
   'createStrategy' : ActorMethod<
-    [Asset, bigint, Frequency, [] | [TriggerCondition]],
+    [StrategyType, Asset, bigint, Frequency, [] | [TriggerCondition]],
     Result_1
   >,
   /**
@@ -156,7 +159,7 @@ export interface _SERVICE {
    */
   'getLastAIRecommendation' : ActorMethod<[], [] | [AIRecommendation]>,
   /**
-   * / Get portfolio holdings
+   * / Get portfolio holdings (public API)
    */
   'getPortfolio' : ActorMethod<[], Array<Holding>>,
   /**

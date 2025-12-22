@@ -55,10 +55,17 @@ persistent actor TradeWeaver {
     #PriceBelowAverage : Float; // Buy when price is X% below SMA
   };
 
+  // Strategy type - Buy or Sell
+  public type StrategyType = {
+    #Buy;
+    #Sell;
+  };
+
   // DCA strategy configuration with flexible timing and conditions
   public type DCAStrategy = {
     id : Nat;
     owner : Principal;
+    strategyType : StrategyType; // Buy or Sell
     targetAsset : Asset;
     amount : Nat; // Amount in USD cents (e.g., 10000 = $100)
     frequency : Frequency; // Flexible interval
@@ -225,6 +232,7 @@ persistent actor TradeWeaver {
 
   /// Create a new DCA strategy with flexible timing and optional conditions
   public shared (msg) func createStrategy(
+    strategyType : StrategyType,
     targetAsset : Asset,
     amount : Nat,
     frequency : Frequency,
@@ -259,6 +267,7 @@ persistent actor TradeWeaver {
     let strategy : DCAStrategy = {
       id = nextStrategyId;
       owner = caller;
+      strategyType = strategyType;
       targetAsset = targetAsset;
       amount = amount;
       frequency = frequency;
@@ -290,6 +299,7 @@ persistent actor TradeWeaver {
         let updated : DCAStrategy = {
           id = strategy.id;
           owner = strategy.owner;
+          strategyType = strategy.strategyType;
           targetAsset = strategy.targetAsset;
           amount = strategy.amount;
           frequency = strategy.frequency;
@@ -320,6 +330,7 @@ persistent actor TradeWeaver {
         let updated : DCAStrategy = {
           id = strategy.id;
           owner = strategy.owner;
+          strategyType = strategy.strategyType;
           targetAsset = strategy.targetAsset;
           amount = strategy.amount;
           frequency = strategy.frequency;
@@ -430,6 +441,7 @@ persistent actor TradeWeaver {
               let updated : DCAStrategy = {
                 id = strategy.id;
                 owner = strategy.owner;
+                strategyType = strategy.strategyType;
                 targetAsset = strategy.targetAsset;
                 amount = strategy.amount;
                 frequency = strategy.frequency;
@@ -448,6 +460,7 @@ persistent actor TradeWeaver {
               let updated : DCAStrategy = {
                 id = strategy.id;
                 owner = strategy.owner;
+                strategyType = strategy.strategyType;
                 targetAsset = strategy.targetAsset;
                 amount = strategy.amount;
                 frequency = strategy.frequency;
@@ -466,6 +479,7 @@ persistent actor TradeWeaver {
           let updated : DCAStrategy = {
             id = strategy.id;
             owner = strategy.owner;
+            strategyType = strategy.strategyType;
             targetAsset = strategy.targetAsset;
             amount = strategy.amount;
             frequency = strategy.frequency;
@@ -1317,10 +1331,8 @@ persistent actor TradeWeaver {
     Buffer.toArray(buffer);
   };
 
-  /// Get portfolio holdings
-  public shared (msg) func getPortfolio() : async [Holding] {
-    let caller = msg.caller;
-
+  /// Private helper to get portfolio holdings for a specific caller
+  private func getPortfolioForCaller(caller : Principal) : [Holding] {
     // Aggregate purchases by asset
     var btcAmount : Float = 0.0;
     var btcCost : Float = 0.0;
@@ -1388,10 +1400,15 @@ persistent actor TradeWeaver {
     Buffer.toArray(buffer);
   };
 
+  /// Get portfolio holdings (public API)
+  public shared (msg) func getPortfolio() : async [Holding] {
+    getPortfolioForCaller(msg.caller);
+  };
+
   /// Calculate profit/loss
   public shared (msg) func getProfitLoss() : async ProfitLoss {
-    let _caller = msg.caller;
-    let portfolio = await getPortfolio();
+    let caller = msg.caller;
+    let portfolio = getPortfolioForCaller(caller); // Use private helper, not async call
     let prices = await getAllPrices();
 
     var totalValue : Float = 0.0;

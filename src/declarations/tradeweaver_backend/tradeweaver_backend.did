@@ -18,6 +18,11 @@ type TransformArgs =
    response: HttpResponsePayload;
  };
 type Time = int;
+type StrategyType = 
+ variant {
+   Buy;
+   Sell;
+ };
 type Result_6 = 
  variant {
    err: text;
@@ -121,6 +126,7 @@ type DCAStrategy =
    intervalSeconds: nat;
    nextExecution: Time;
    owner: principal;
+   strategyType: StrategyType;
    targetAsset: Asset;
    triggerCondition: TriggerCondition;
  };
@@ -151,8 +157,8 @@ service : {
   /// Create a new user account
   createAccount: () -> (Result_4);
   /// Create a new DCA strategy with flexible timing and optional conditions
-  createStrategy: (targetAsset: Asset, amount: nat, frequency: Frequency,
-   condition: opt TriggerCondition) -> (Result_1);
+  createStrategy: (strategyType: StrategyType, targetAsset: Asset, amount:
+   nat, frequency: Frequency, condition: opt TriggerCondition) -> (Result_1);
   /// Delete a DCA strategy
   deleteStrategy: (strategyId: nat) -> (Result_6);
   /// Fetch current price for an asset via HTTPS outcall
@@ -175,7 +181,7 @@ service : {
   getEthereumAddress: () -> (Result_3);
   /// Get the last AI recommendation (cached)
   getLastAIRecommendation: () -> (opt AIRecommendation) query;
-  /// Get portfolio holdings
+  /// Get portfolio holdings (public API)
   getPortfolio: () -> (vec Holding);
   /// Get price history for analysis
   getPriceHistoryForAsset: (asset: Asset) -> (vec PriceHistoryEntry) query;

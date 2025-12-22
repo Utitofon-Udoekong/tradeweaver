@@ -6,6 +6,7 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : Time,
   });
   const Result_4 = IDL.Variant({ 'ok' : UserAccount, 'err' : IDL.Text });
+  const StrategyType = IDL.Variant({ 'Buy' : IDL.Null, 'Sell' : IDL.Null });
   const Asset = IDL.Variant({
     'BTC' : IDL.Null,
     'ETH' : IDL.Null,
@@ -38,6 +39,7 @@ export const idlFactory = ({ IDL }) => {
     'frequency' : Frequency,
     'nextExecution' : Time,
     'amount' : IDL.Nat,
+    'strategyType' : StrategyType,
   });
   const Result_1 = IDL.Variant({ 'ok' : DCAStrategy, 'err' : IDL.Text });
   const Result_6 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
@@ -104,7 +106,7 @@ export const idlFactory = ({ IDL }) => {
     'checkAndExecuteStrategies' : IDL.Func([], [IDL.Nat], []),
     'createAccount' : IDL.Func([], [Result_4], []),
     'createStrategy' : IDL.Func(
-        [Asset, IDL.Nat, Frequency, IDL.Opt(TriggerCondition)],
+        [StrategyType, Asset, IDL.Nat, Frequency, IDL.Opt(TriggerCondition)],
         [Result_1],
         [],
       ),
