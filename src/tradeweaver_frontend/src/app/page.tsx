@@ -880,10 +880,11 @@ TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling*
           <p className="text-xs text-slate-500 mb-2">Recent Activity</p>
           <div className="flex gap-3 overflow-x-auto">
             {purchases.slice().reverse().slice(0, 5).map((tx, i) => (
-              <div key={i} className="shrink-0 bg-slate-800/50 rounded-lg px-3 py-2 text-xs">
-                <span className="text-white font-medium">{getAssetSymbol(tx.asset)}</span>
+              <div key={i} className={`shrink-0 rounded-lg px-3 py-2 text-xs ${tx.isSell ? 'bg-red-500/10 border border-red-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'}`}>
+                <span className={`font-medium ${tx.isSell ? 'text-red-400' : 'text-emerald-400'}`}>{tx.isSell ? '↓ Sell' : '↑ Buy'}</span>
+                <span className="text-white font-medium ml-2">{getAssetSymbol(tx.asset)}</span>
                 <span className="text-slate-400 ml-2">{formatCrypto(tx.amountAsset, 4)}</span>
-                <span className="text-emerald-400 ml-2">{formatUSD(tx.amountUSD)}</span>
+                <span className={`ml-2 ${tx.isSell ? 'text-red-400' : 'text-emerald-400'}`}>{formatUSD(tx.amountUSD)}</span>
               </div>
             ))}
           </div>

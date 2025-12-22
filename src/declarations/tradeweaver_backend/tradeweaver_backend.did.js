@@ -47,6 +47,7 @@ export const idlFactory = ({ IDL }) => {
     'id' : IDL.Nat,
     'asset' : Asset,
     'amountAsset' : IDL.Float64,
+    'isSell' : IDL.Bool,
     'timestamp' : Time,
     'txHash' : IDL.Text,
     'amountUSD' : IDL.Nat,

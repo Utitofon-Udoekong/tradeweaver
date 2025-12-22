@@ -64,6 +64,7 @@ type Purchase =
    amountUSD: nat;
    asset: Asset;
    id: nat;
+   isSell: bool;
    price: float64;
    strategyId: nat;
    timestamp: Time;

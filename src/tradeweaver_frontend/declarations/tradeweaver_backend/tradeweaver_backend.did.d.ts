@@ -68,6 +68,7 @@ export interface Purchase {
   'id' : bigint,
   'asset' : Asset,
   'amountAsset' : number,
+  'isSell' : boolean,
   'timestamp' : Time,
   'txHash' : string,
   'amountUSD' : bigint,

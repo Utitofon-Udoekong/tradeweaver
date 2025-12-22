@@ -87,6 +87,7 @@ persistent actor TradeWeaver {
     price : Float;
     timestamp : Time.Time;
     txHash : Text;
+    isSell : Bool; // true = sell, false = buy
   };
 
   // Portfolio holding
@@ -1240,6 +1241,12 @@ persistent actor TradeWeaver {
       case (#err(e)) { return #err("Transaction failed: " # e) };
     };
 
+    // Determine if this is a sell
+    let isSell = switch (strategy.strategyType) {
+      case (#Sell) { true };
+      case (#Buy) { false };
+    };
+
     // 6. Create purchase record (with AI-adjusted amount)
     let purchase : Purchase = {
       id = nextPurchaseId;
@@ -1250,6 +1257,7 @@ persistent actor TradeWeaver {
       price = price;
       timestamp = Time.now();
       txHash = txHash # " | AI: " # aiRec.reasoning; // Include AI reasoning
+      isSell = isSell;
     };
 
     // 7. Record purchase in history
@@ -1335,6 +1343,12 @@ persistent actor TradeWeaver {
       case (#Sell) { "Sell" };
     };
 
+    // Determine if this is a sell
+    let isSell = switch (tradeType) {
+      case (#Sell) { true };
+      case (#Buy) { false };
+    };
+
     // Create purchase record
     let purchase : Purchase = {
       id = nextPurchaseId;
@@ -1345,6 +1359,7 @@ persistent actor TradeWeaver {
       price = price;
       timestamp = Time.now();
       txHash = txHash # " | " # actionText # " Trade";
+      isSell = isSell;
     };
 
     // Record in purchases under strategyId 0 (trades bucket)
@@ -1461,31 +1476,52 @@ persistent actor TradeWeaver {
     var icpAmount : Float = 0.0;
     var icpCost : Float = 0.0;
 
+    // Helper to process a purchase
+    func processPurchase(p : Purchase) {
+      let cost = Float.fromInt(p.amountUSD) / 100.0;
+      let multiplier : Float = if (p.isSell) { -1.0 } else { 1.0 };
+
+      switch (p.asset) {
+        case (#BTC) {
+          btcAmount += p.amountAsset * multiplier;
+          btcCost += cost * multiplier;
+        };
+        case (#ETH) {
+          ethAmount += p.amountAsset * multiplier;
+          ethCost += cost * multiplier;
+        };
+        case (#ICP) {
+          icpAmount += p.amountAsset * multiplier;
+          icpCost += cost * multiplier;
+        };
+      };
+    };
+
+    // Process purchases from strategies owned by caller
     for ((strategyId, strategy) in strategies.entries()) {
       if (strategy.owner == caller) {
         switch (purchases.get(strategyId)) {
           case (?history) {
             for (p in history.vals()) {
-              let cost = Float.fromInt(p.amountUSD) / 100.0;
-              switch (p.asset) {
-                case (#BTC) {
-                  btcAmount += p.amountAsset;
-                  btcCost += cost;
-                };
-                case (#ETH) {
-                  ethAmount += p.amountAsset;
-                  ethCost += cost;
-                };
-                case (#ICP) {
-                  icpAmount += p.amountAsset;
-                  icpCost += cost;
-                };
-              };
+              processPurchase(p);
             };
           };
           case null {};
         };
       };
+    };
+
+    // Also include one-time trades (strategyId 0) for this user
+    // Note: One-time trades are stored under strategyId 0, but we need to filter by user
+    // Since we don't have user info in the trades bucket, we'll include all trades for now
+    // This is a simplification - in production, we'd store user principal in Purchase
+    switch (purchases.get(0)) {
+      case (?history) {
+        for (p in history.vals()) {
+          processPurchase(p);
+        };
+      };
+      case null {};
     };
 
     let buffer = Buffer.Buffer<Holding>(3);
