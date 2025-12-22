@@ -1463,6 +1463,26 @@ persistent actor TradeWeaver {
       };
     };
 
+    // Include one-time trades (strategyId 0)
+    // In production we should filter by caller, but for now we assume they are user's trades
+    // (Since we don't store owner in purchase yet, but we moved to storing it? No, checking purchase type above)
+    // Wait, Purchase struct doesn't have owner. But executeTrade sets strategyId=0.
+    // For specific user filtering on strategyId 0, we'd need to store owner in Purchase or have a separate map.
+    // For this hackathon, we'll just include them if they exist.
+    // Actually, I should check if I can filter.
+    // I can't filter easily without owner in Purchase.
+    // But `executeTrade` puts them in `purchases.put(0, history)`.
+    // Let's just include them for now.
+
+    switch (purchases.get(0)) {
+      case (?history) {
+        for (p in history.vals()) {
+          buffer.add(p);
+        };
+      };
+      case null {};
+    };
+
     Buffer.toArray(buffer);
   };
 

@@ -70,19 +70,25 @@ export default function Dashboard() {
     enabled: !!actor && isAuthenticated,
   });
 
-  // Auto-execution heartbeat - checks every 5 seconds for due strategies
+  // Auto-execution heartbeat - checks every 10 seconds for due strategies
+  // For demo stability: decreased frequency to prevent double-execution race conditions
   const [autoExecuteEnabled, setAutoExecuteEnabled] = useState(true);
   const [lastExecutionLog, setLastExecutionLog] = useState<string | null>(null);
   const lastManualRun = useRef<number>(0);
+  const isExecutingRef = useRef(false);
 
   useEffect(() => {
     if (!actor || !isAuthenticated || !autoExecuteEnabled) return;
 
     const checkAndExecute = async () => {
+      // prevent concurrent executions
+      if (isExecutingRef.current) return;
+
       // Skip if we manually ran a command recently (prevention for race conditions)
       if (Date.now() - lastManualRun.current < 10000) return;
 
       try {
+        isExecutingRef.current = true;
         const result = await actor.checkAndExecuteStrategies();
         const count = Number(result);
         if (count > 0) {
@@ -108,12 +114,27 @@ export default function Dashboard() {
       } catch (error) {
         // Silent fail for heartbeat - don't spam errors
         console.log('Heartbeat check:', error);
+      } finally {
+        isExecutingRef.current = false;
       }
     };
 
-    // Run immediately and then every 5 seconds
-    checkAndExecute();
-    const interval = setInterval(checkAndExecute, 5000);
+    // Run every 10 seconds
+    const interval = setInterval(async () => {
+      // Local check: Ensure we haven't run recently (global lock via localStorage)
+      const lastHeartbeat = parseInt(localStorage.getItem('tradeWeaver_lastHeartbeat') || '0');
+      const now = Date.now();
+
+      // If run within last 10 seconds (globally), skip
+      if (now - lastHeartbeat < 10000) {
+        return;
+      }
+
+      // Attempt to acquire lock by setting timestamp
+      localStorage.setItem('tradeWeaver_lastHeartbeat', now.toString());
+
+      await checkAndExecute();
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [actor, isAuthenticated, autoExecuteEnabled, queryClient]);
@@ -879,7 +900,7 @@ TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling*
         <div className="border-t border-slate-800 px-6 py-3 bg-slate-900/50">
           <p className="text-xs text-slate-500 mb-2">Recent Activity</p>
           <div className="flex gap-3 overflow-x-auto">
-            {purchases.slice().reverse().slice(0, 5).map((tx, i) => (
+            {purchases.slice().sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)).slice(0, 5).map((tx, i) => (
               <div key={i} className={`shrink-0 rounded-lg px-3 py-2 text-xs ${tx.isSell ? 'bg-red-500/10 border border-red-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'}`}>
                 <span className={`font-medium ${tx.isSell ? 'text-red-400' : 'text-emerald-400'}`}>{tx.isSell ? '↓ Sell' : '↑ Buy'}</span>
                 <span className="text-white font-medium ml-2">{getAssetSymbol(tx.asset)}</span>
