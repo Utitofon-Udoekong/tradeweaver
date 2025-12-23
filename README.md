@@ -1,14 +1,15 @@
 # TradeWeaver
 
-AI-powered autonomous DCA (Dollar-Cost Averaging) agent on ICP with Chain Fusion for cross-chain crypto purchases.
+TradeWeaver is an **AI-powered autonomous trading agent** built on the Internet Computer (ICP). It leverages ICP's **Chain Fusion** technology to natively execute cross-chain transactions (BTC, ETH, ICP) without bridges, using an on-chain AI engine to optimize Dollar-Cost Averaging (DCA) strategies based on real-time market trends.
 
 ## Features
 
-- **AI-optimized purchases** – Trend analysis adjusts buy amounts dynamically
-- **Recurring schedules** – Daily, weekly, biweekly, or monthly DCA
-- **Cross-chain support** – BTC, ETH, ICP via Chain Fusion threshold signatures
-- **Real-time pricing** – CoinGecko API via HTTPS outcalls
-- **Portfolio analytics** – Cost basis tracking and P&L calculation
+- **AI-optimized purchases** – Trend analysis adjusts buy amounts dynamically (buying more on dips)
+- **Natural Language Interface** – Chat-based strategy creation (e.g., "/buy $50 BTC every week")
+- **Cross-chain support** – Native BTC, ETH, and ICP via Chain Fusion threshold signatures
+- **One-Time Trades** – Immediate execution for reactive trading with the `/trade` command
+- **Real-time pricing** – CoinGecko API integration via HTTPS outcalls
+- **Portfolio analytics** – Automatic cost-basis tracking and real-time P&L calculation
 
 ## AI Decision Engine
 
@@ -26,36 +27,40 @@ The bot uses on-chain AI logic to optimize purchase timing and amounts:
 | Layer | Technology |
 |-------|------------|
 | Backend | Motoko on ICP |
-| Frontend | Next.js 16, Tailwind CSS |
-| AI | On-chain trend analysis, SMA |
+| Frontend | Next.js, Tailwind CSS |
+| AI | On-chain trend analysis (SMA-based) |
 | Cross-chain | Threshold Schnorr (BTC), ECDSA (ETH) |
 | Auth | Internet Identity |
 
-## Development
+## Getting Started
 
+### 1. Prerequisites
+Ensure you have the [IC SDK (dfx)](https://internetcomputer.org/docs/current/developer-docs/setup/install) installed.
+
+### 2. Deploy the Backend
+Start your local replica and deploy the canisters:
 ```bash
-# Start local replica
-dfx start --clean --background
-dfx deps deploy internet_identity
-dfx deploy tradeweaver_backend
+# Start local ICP replica
+dfx start --background --clean
 
-# Run frontend
+# Deploy internet identity and backend
+dfx deploy
+```
+
+### 3. Run the Frontend
+Navigate to the frontend directory and start the development server:
+```bash
 cd src/tradeweaver_frontend
 npm install && npm run dev
 ```
 
-## API
-
-```bash
-# Get AI recommendation
-dfx canister call tradeweaver_backend getAIRecommendation '(variant { BTC }, 10000)'
-
-# Create DCA strategy
-dfx canister call tradeweaver_backend createStrategy '(variant { BTC }, 10000, variant { Weekly })'
-
-# Execute with AI optimization
-dfx canister call tradeweaver_backend triggerExecution '(0)'
-```
+### 4. Basic Commands
+Open `http://localhost:3000` and interact with the agent:
+- `/buy $10 ICP daily` - Create a DCA strategy
+- `/trade sell $20 BTC` - Execute an immediate one-time trade
+- `/portfolio` - View your holdings and P&L
+- `/strategies` - List active automated strategies
+- `/help` - See all available features
 
 ## License
 
