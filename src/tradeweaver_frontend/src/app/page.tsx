@@ -806,8 +806,8 @@ TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling*
       {/* Header */}
       <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-            <Zap className="text-white" size={20} />
+          <div className="h-10 w-10 rounded-xl overflow-hidden flex items-center justify-center ring-2 ring-emerald-500/20">
+            <img src="/logo.jpg" alt="Logo" className="h-full w-full object-cover" />
           </div>
           <div>
             <h1 className="font-bold text-white">TradeWeaver</h1>
@@ -847,8 +847,8 @@ TradeWeaver automates Dollar-Cost Averaging (DCA) for both **buying AND selling*
         {messages.map((msg) => (
           <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
             {msg.role === 'agent' && (
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shrink-0">
-                <Bot size={16} className="text-white" />
+              <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 ring-1 ring-emerald-500/20">
+                <img src="/logo.jpg" alt="Agent" className="h-full w-full object-cover" />
               </div>
             )}
             <div className={`max-w-xl rounded-2xl px-4 py-3 ${msg.role === 'user'

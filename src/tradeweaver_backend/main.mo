@@ -159,9 +159,9 @@ persistent actor TradeWeaver {
 
   // Mock prices for testing (will be replaced with HTTPS outcalls)
   transient var mockPrices : [(Asset, Float)] = [
-    (#BTC, 97500.0),
-    (#ETH, 3450.0),
-    (#ICP, 11.5),
+    (#BTC, 88000.0),
+    (#ETH, 3000.0),
+    (#ICP, 3.10),
   ];
 
   // Price history for AI trend analysis (keeps last 24 entries per asset)
